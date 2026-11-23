@@ -448,6 +448,78 @@ test.describe.serial('moving nodes', () => {
     await expect(node(page, 'add')).toBeVisible();
     expect(readFileSync(dragFile, 'utf8')).toBe(before);
   });
+
+  // Literals, variables and parameters (still Drag.dia; earlier tests deleted
+  // Main's literals, so acc1.in and acc2.in are free).
+
+  test('dropping a literal on a free input port and typing a value connects it', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Main');
+    const form = page.getByTestId('add-form');
+
+    // Dropped away from any port: a hint instead of a form.
+    await page.getByTestId('tool-literal').dragTo(page.locator('.react-flow__pane'), { targetPosition: { x: 500, y: 300 } });
+    await expect(page.getByRole('alert')).toContainText('Drop the literal on a free input port');
+    await expect(form).toHaveCount(0);
+
+    // A value that is not a literal is refused in the form, which stays open.
+    await page.getByTestId('tool-literal').dragTo(handle(page, 'acc2', 'in:in'));
+    await expect(form).toBeVisible();
+    await form.getByLabel('Value').fill('abc');
+    await form.getByLabel('Value').press('Enter');
+    await expect(form.getByRole('alert')).toContainText('Not a literal');
+    await form.getByLabel('Value').fill('7');
+    await form.getByLabel('Value').press('Enter');
+
+    await expect(form).toHaveCount(0);
+    await expect(node(page, '#literal:acc2.in:in')).toHaveText('7');
+    expect(readFileSync(dragFile, 'utf8')).toContain('connect(7, acc2.in);');
+  });
+
+  test('dropping a variable opens a form for its kind, name and type', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Acc');
+    const form = page.getByTestId('add-form');
+    await page.getByTestId('tool-variable').dragTo(page.locator('.react-flow__pane'), { targetPosition: { x: 450, y: 320 } });
+    await expect(form.getByLabel('Name')).toHaveValue('v'); // a suggestion
+
+    // A name that is taken is refused; Escape cancels without changing anything.
+    const before = readFileSync(dragFile, 'utf8');
+    await form.getByLabel('Name').fill('state');
+    await form.getByLabel('Name').press('Enter');
+    await expect(form.getByRole('alert')).toContainText('already used');
+    await form.getByLabel('Name').press('Escape');
+    await expect(form).toHaveCount(0);
+    expect(readFileSync(dragFile, 'utf8')).toBe(before);
+
+    await page.getByTestId('tool-variable').dragTo(page.locator('.react-flow__pane'), { targetPosition: { x: 450, y: 320 } });
+    await form.getByLabel('Kind').selectOption('input');
+    await form.getByLabel('Name').fill('level');
+    await form.getByLabel('Type').selectOption('Real');
+    await form.getByRole('button', { name: 'Add' }).click();
+
+    await expect(node(page, 'level')).toHaveText('input level');
+    expect(readFileSync(dragFile, 'utf8')).toContain('  var state: Int;\n  input level: Real;\n');
+  });
+
+  test('an input parameter is added to the header, and can be deleted and undeleted', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Acc');
+    const form = page.getByTestId('add-form');
+    await page.getByTestId('tool-inParameter').dragTo(page.locator('.react-flow__pane'), { targetPosition: { x: 60, y: 330 } });
+    await form.getByLabel('Name').fill('reset');
+    await form.getByLabel('Type').selectOption('Bool');
+    await form.getByLabel('Name').press('Enter');
+
+    await expect(node(page, 'reset').locator('.parameter')).toHaveClass(/parameter--in/);
+    expect(readFileSync(dragFile, 'utf8')).toContain('diagramtype Acc(in: Int, reset: Bool => out: Int) {');
+
+    await node(page, 'reset').click();
+    await page.getByRole('button', { name: 'Delete parameter', exact: true }).click();
+    await expect(node(page, 'reset')).toHaveCount(0);
+    expect(readFileSync(dragFile, 'utf8')).toContain('diagramtype Acc(in: Int => out: Int) {');
+
+    await page.keyboard.press('Control+z');
+    await expect(node(page, 'reset')).toBeVisible();
+    expect(readFileSync(dragFile, 'utf8')).toContain('diagramtype Acc(in: Int, reset: Bool => out: Int) {');
+  });
 });
 
 test('the palette lists the types a block can be added of', async ({ page }) => {

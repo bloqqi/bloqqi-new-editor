@@ -191,21 +191,236 @@ public final class DiagramEdits {
 		String withBlock = insertStatement(new SourceText(file.source()), dt, name + ";", declarations);
 		LoadedFile added = check(file, withBlock);
 
-		// Keep everything where it is shown now, and put the new block at (x, y).
+		return placeNew(before, added, diagramTypeName, name, x, y);
+	}
+
+	/**
+	 * After a node was added (giving {@code added}), stores the layout: every
+	 * node where it was shown before ({@code before}), and the new one at (x, y).
+	 */
+	private static String placeNew(Diagram before, LoadedFile added, String diagramTypeName, String id, int x, int y) {
 		List<Move> positions = new ArrayList<>();
 		for (DiagramNode n : before.nodes()) {
 			if (!n.kind().equals(Diagram.LITERAL)) {
 				positions.add(new Move(n.id(), n.x(), n.y()));
 			}
 		}
-		positions.add(new Move(name, Math.max(0, x), Math.max(0, y)));
+		positions.add(new Move(id, Math.max(0, x), Math.max(0, y)));
 		String newText = moveNodes(added, diagramTypeName, positions);
-		String id = name;
-		if (DiagramBuilder.build(BloqqiLoader.load(file.fileName(), newText), diagramTypeName).nodes().stream()
+		if (DiagramBuilder.build(BloqqiLoader.load(added.fileName(), newText), diagramTypeName).nodes().stream()
 				.noneMatch(n -> n.id().equals(id))) {
-			throw new IllegalStateException("Could not add " + name + " to " + dt.name());
+			throw new IllegalStateException("Could not add " + id + " to " + diagramTypeName);
 		}
 		return newText;
+	}
+
+	/** Types offered for new parameters and variables, as in the old editor (spec §3.5, Q11). */
+	public static final List<String> SIMPLE_TYPES = List.of("Int", "Bool", "Real");
+
+	/** Variable kinds: {@code var} (state), {@code input}, {@code output}. */
+	public static final List<String> VARIABLE_KINDS = List.of("var", "input", "output");
+
+	/**
+	 * Feeds a literal into a free target (docs/editor-spec.md §3.3): appends
+	 * {@code connect(<value>, <target>);}. The value must be one {@code true},
+	 * {@code false}, integer, decimal or string token ({@code Program.parseLiteral});
+	 * a value of the wrong type is refused by the reparse check.
+	 */
+	public static String addLiteral(LoadedFile file, String diagramTypeName, Endpoint target, String value) {
+		requireEditable(file);
+		String text = value == null ? "" : value.trim();
+		if (org.bloqqi.compiler.ast.Program.parseLiteral(text) == null) {
+			throw new IllegalArgumentException("Not a literal: \"" + text
+					+ "\" (expected e.g. 3, 2.5, true, false or \"text\")");
+		}
+		DiagramBuilder.Builder diagram = DiagramBuilder.resolve(file, diagramTypeName);
+		Anchor t = diagram.anchor(target);
+		if (t == null) {
+			throw new IllegalArgumentException("No such handle: " + target);
+		}
+		if (!DiagramBuilder.canBeTarget(t)) {
+			throw new IllegalArgumentException(DiagramBuilder.ingoing(t).isEmpty()
+					? "A literal cannot be connected to " + target
+					: target + " already has an incoming connection");
+		}
+		DiagramType dt = diagram.diagramType();
+		String newText = insertStatement(new SourceText(file.source()), dt,
+				"connect(" + text + ", " + accessText(t) + ");", bodyStatements(dt));
+		LoadedFile after = check(file, newText);
+		boolean connected = DiagramBuilder.build(after, diagramTypeName).edges().stream().anyMatch(e ->
+				e.fromLiteral() && e.target().equals(target.node()) && e.targetHandle().equals(target.handle()));
+		if (!connected) {
+			throw new IllegalStateException("Could not connect " + text + " to " + target);
+		}
+		return newText;
+	}
+
+	/**
+	 * Adds a variable {@code <kind> <name>: <type>;} after the type's last
+	 * variable declaration (or first in the body) and stores its position.
+	 */
+	public static String addVariable(LoadedFile file, String diagramTypeName, String kind, String name,
+			String typeName, int x, int y) {
+		requireEditable(file);
+		if (!VARIABLE_KINDS.contains(kind)) {
+			throw new IllegalArgumentException("Unknown kind of variable: " + kind);
+		}
+		DiagramType dt = topLevelDiagramType(file, diagramTypeName);
+		requireNewName(dt, name);
+		requireSimpleType(typeName);
+		Diagram before = DiagramBuilder.build(file, diagramTypeName);
+		List<ASTNode<?>> variables = new ArrayList<>();
+		dt.getLocalVariableList().forEach(variables::add);
+		String withVariable = insertStatement(new SourceText(file.source()), dt,
+				kind + " " + name + ": " + typeName + ";", variables);
+		return placeNew(before, check(file, withVariable), diagramTypeName, name, x, y);
+	}
+
+	/**
+	 * Adds an in- or out-parameter {@code <name>: <type>} to the type's header
+	 * (written {@code <type> <name>} if the header already uses that order),
+	 * and stores its position.
+	 */
+	public static String addParameter(LoadedFile file, String diagramTypeName, boolean in, String name,
+			String typeName, int x, int y) {
+		requireEditable(file);
+		DiagramType dt = topLevelDiagramType(file, diagramTypeName);
+		requireNewName(dt, name);
+		requireSimpleType(typeName);
+		Diagram before = DiagramBuilder.build(file, diagramTypeName);
+		SourceText source = new SourceText(file.source());
+		Header h = header(source, dt);
+		String parameter = h.typeFirst() ? typeName + " " + name : name + ": " + typeName;
+
+		TextEdit edit;
+		List<ASTNode<?>> ins = positioned(dt.getLocalInParameterList());
+		List<ASTNode<?>> outs = positioned(dt.getLocalOutParameterList());
+		if (in) {
+			if (!ins.isEmpty()) {
+				int at = source.end(ins.get(ins.size() - 1));
+				edit = new TextEdit(at, at, ", " + parameter);
+			} else if (h.lpar() >= 0) {
+				edit = new TextEdit(h.lpar() + 1, h.lpar() + 1, parameter + (outs.isEmpty() ? "" : " "));
+			} else {
+				edit = new TextEdit(h.nameEnd(), h.nameEnd(), "(" + parameter + ")");
+			}
+		} else {
+			if (!outs.isEmpty()) {
+				int at = source.end(outs.get(outs.size() - 1));
+				edit = new TextEdit(at, at, ", " + parameter);
+			} else if (h.lpar() >= 0) {
+				edit = new TextEdit(h.rpar(), h.rpar(), (ins.isEmpty() ? "=> " : " => ") + parameter);
+			} else {
+				edit = new TextEdit(h.nameEnd(), h.nameEnd(), "(=> " + parameter + ")");
+			}
+		}
+		String withParameter = apply(file.source(), List.of(edit));
+		return placeNew(before, check(file, withParameter), diagramTypeName, name, x, y);
+	}
+
+	private static void requireNewName(DiagramType dt, String name) {
+		if (name == null || !org.bloqqi.compiler.ast.Program.isIdValid(name)) {
+			throw new IllegalArgumentException("Not a valid name: \"" + name + "\"");
+		}
+		if (dt.lookup(name) != null) {
+			throw new IllegalArgumentException("The name " + name + " is already used in " + dt.name());
+		}
+	}
+
+	private static void requireSimpleType(String typeName) {
+		if (!SIMPLE_TYPES.contains(typeName)) {
+			throw new IllegalArgumentException("The type must be one of " + SIMPLE_TYPES + ", not " + typeName);
+		}
+	}
+
+	/** The written (positioned) children of a list. */
+	private static List<ASTNode<?>> positioned(ASTNode<?> list) {
+		List<ASTNode<?>> result = new ArrayList<>();
+		for (int i = 0; i < list.getNumChild(); i++) {
+			ASTNode<?> child = list.getChild(i);
+			if (SourceText.hasPosition(child)) {
+				result.add(child);
+			}
+		}
+		return result;
+	}
+
+	/** Statements of a type's body, in the grammar's order: variables, blocks, connections. */
+	private static List<ASTNode<?>> bodyStatements(DiagramType dt) {
+		List<ASTNode<?>> statements = new ArrayList<>();
+		dt.getLocalVariableList().forEach(statements::add);
+		dt.getLocalBlockList().forEach(statements::add);
+		dt.getFlowDeclList().forEach(statements::add);
+		return statements;
+	}
+
+	/**
+	 * Where things are in a type's header {@code diagramtype Name(a: Int => b: Int)}:
+	 * the offset after the name, of '(' and ')' (-1 if there are no parentheses),
+	 * of {@code =>} (-1 if none), and whether parameters are written type first.
+	 */
+	record Header(int nameEnd, int lpar, int rpar, int arrow, boolean typeFirst) {
+	}
+
+	static Header header(SourceText source, DiagramType dt) {
+		int from = source.start(dt);
+		int open = bodyBraces(source, dt)[0];
+		int nameEnd = -1;
+		int lpar = -1;
+		int rpar = -1;
+		int arrow = -1;
+		boolean afterKeyword = false;
+		BloqqiScanner scanner = new BloqqiScanner(new StringReader(source.text()));
+		try {
+			for (Symbol token = scanner.nextToken(); token.getId() != BloqqiParser.Terminals.EOF;
+					token = scanner.nextToken()) {
+				int start = source.offset(Symbol.getLine(token.getStart()), Symbol.getColumn(token.getStart()));
+				if (start < from) {
+					continue;
+				}
+				if (start >= open) {
+					break;
+				}
+				int end = source.offset(Symbol.getLine(token.getEnd()), Symbol.getColumn(token.getEnd())) + 1;
+				short id = token.getId();
+				if (id == BloqqiParser.Terminals.DIAGRAMTYPE) {
+					afterKeyword = true;
+				} else if (afterKeyword && nameEnd < 0 && id == BloqqiParser.Terminals.ID) {
+					nameEnd = end;
+				} else if (nameEnd >= 0 && lpar < 0 && rpar < 0 && id == BloqqiParser.Terminals.LPAR
+						&& start == skipSpaces(source.text(), nameEnd)) {
+					lpar = start;
+				} else if (lpar >= 0 && rpar < 0 && id == BloqqiParser.Terminals.ARROW) {
+					arrow = start;
+				} else if (lpar >= 0 && rpar < 0 && id == BloqqiParser.Terminals.RPAR) {
+					rpar = start;
+				}
+			}
+		} catch (IOException | beaver.Scanner.Exception | BloqqiScanner.ScannerError e) {
+			throw new IllegalStateException("Could not scan " + dt.name(), e);
+		}
+		if (nameEnd < 0) {
+			throw new IllegalStateException("No header found for " + dt.name());
+		}
+		boolean typeFirst = false;
+		for (List<ASTNode<?>> params : List.of(positioned(dt.getLocalInParameterList()),
+				positioned(dt.getLocalOutParameterList()))) {
+			for (ASTNode<?> p : params) {
+				String typeName = ((org.bloqqi.compiler.ast.Parameter) p).getTypeUse().getID();
+				String text = source.text(p);
+				typeFirst = text.startsWith(typeName) && text.length() > typeName.length()
+						&& Character.isWhitespace(text.charAt(typeName.length()));
+			}
+		}
+		return new Header(nameEnd, lpar, rpar, arrow, typeFirst);
+	}
+
+	private static int skipSpaces(String text, int from) {
+		int i = from;
+		while (i < text.length() && Character.isWhitespace(text.charAt(i))) {
+			i++;
+		}
+		return i;
 	}
 
 	/**
@@ -245,11 +460,7 @@ public final class DiagramEdits {
 
 		String statement = "connect(" + accessText(s) + ", " + accessText(t) + ");";
 		DiagramType dt = diagram.diagramType();
-		List<ASTNode<?>> statements = new ArrayList<>();
-		dt.getLocalVariableList().forEach(statements::add);
-		dt.getLocalBlockList().forEach(statements::add);
-		dt.getFlowDeclList().forEach(statements::add);
-		String newText = insertStatement(new SourceText(file.source()), dt, statement, statements);
+		String newText = insertStatement(new SourceText(file.source()), dt, statement, bodyStatements(dt));
 		LoadedFile after = check(file, newText);
 		boolean connected = DiagramBuilder.build(after, diagramTypeName).edges().stream().anyMatch(e ->
 				e.source().equals(source.node()) && e.sourceHandle().equals(source.handle())
@@ -300,26 +511,27 @@ public final class DiagramEdits {
 			flows.add(c.getDeclaredFlowDecl());
 		}
 
-		List<Block> blocks = new ArrayList<>();
-		Set<String> blockIds = new HashSet<>();
+		List<ASTNode<?>> statements = new ArrayList<>(); // blocks and variables
+		Set<ASTNode<?>> parameters = new HashSet<>();
+		Set<String> blockIds = new HashSet<>(); // all deleted nodes
 		for (String id : nodeIds) {
-			InheritedBlock b = null;
-			for (InheritedBlock candidate : dt.getBlocks()) {
-				if (candidate.accessString().equals(id)) {
-					b = candidate;
-				}
+			org.bloqqi.compiler.ast.Node n = diagram.node(id);
+			if (n == null) {
+				throw new IllegalArgumentException("No block, variable or parameter " + id + " in " + dt.name());
 			}
-			if (b == null) {
-				throw new IllegalArgumentException("No block " + id + " in " + dt.name());
-			}
-			if (!DiagramBuilder.isDeletable(b, dt)) {
-				throw new IllegalArgumentException("Block " + id + " is not declared in " + dt.name()
+			if (!DiagramBuilder.isDeletable(n, dt)) {
+				throw new IllegalArgumentException(id + " is not declared in " + dt.name()
 						+ " (it is inherited or inlined)");
 			}
-			blocks.add(b.getDeclaredBlock());
+			ASTNode<?> declared = DiagramBuilder.declaration(n);
+			if (n instanceof org.bloqqi.compiler.ast.Parameter) {
+				parameters.add(declared);
+			} else {
+				statements.add(declared);
+			}
 			blockIds.add(id);
 		}
-		// The connections on the deleted blocks' ports (and literals feeding them).
+		// The connections on the deleted nodes (and literals feeding them).
 		if (!blockIds.isEmpty()) {
 			for (InheritedConnection c : dt.getConnections()) {
 				String s = nodeOf(c.getSource().anchor());
@@ -335,14 +547,19 @@ public final class DiagramEdits {
 			int[] r = statementLines(source, source.start(d), source.end(d));
 			edits.add(new TextEdit(r[0], r[1], ""));
 		}
-		if (!blocks.isEmpty()) {
+		if (!statements.isEmpty()) {
 			int close = bodyBraces(source, dt)[1];
-			for (Block b : blocks) {
+			for (ASTNode<?> b : statements) {
 				int start = source.start(b);
 				int end = semicolonAfter(source.text(), source.end(b), close);
 				int[] r = statementLines(source, start, end);
 				edits.add(new TextEdit(r[0], r[1], ""));
 			}
+		}
+		if (!parameters.isEmpty()) {
+			edits.add(parameterListEdit(source, dt, parameters));
+		}
+		if (!blockIds.isEmpty()) {
 			TreeMap<String, Layout.Rect> entries = annotations(source, dt);
 			if (entries.keySet().removeAll(blockIds)) {
 				edits.add(annotationEdit(source, dt, entries));
@@ -351,6 +568,29 @@ public final class DiagramEdits {
 		String newText = apply(file.source(), edits);
 		check(file, newText);
 		return newText;
+	}
+
+	/**
+	 * Rewrites the text between the header's parentheses without the removed
+	 * parameters, from the remaining parameters' own text: {@code a: Int => b: Int}.
+	 */
+	private static TextEdit parameterListEdit(SourceText source, DiagramType dt, Set<ASTNode<?>> removed) {
+		Header h = header(source, dt);
+		List<String> ins = new ArrayList<>();
+		List<String> outs = new ArrayList<>();
+		for (ASTNode<?> p : positioned(dt.getLocalInParameterList())) {
+			if (!removed.contains(p)) {
+				ins.add(source.text(p));
+			}
+		}
+		for (ASTNode<?> p : positioned(dt.getLocalOutParameterList())) {
+			if (!removed.contains(p)) {
+				outs.add(source.text(p));
+			}
+		}
+		String inner = String.join(", ", ins)
+				+ (outs.isEmpty() ? "" : (ins.isEmpty() ? "=> " : " => ") + String.join(", ", outs));
+		return new TextEdit(h.lpar() + 1, h.rpar(), inner);
 	}
 
 	/** The node id (access string) an anchor belongs to, or null (literals). */

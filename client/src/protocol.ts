@@ -184,12 +184,54 @@ export interface RestoreRequest {
   expected: string;
 }
 
+/** Types offered for new parameters and variables (DiagramEdits.SIMPLE_TYPES). */
+export const SIMPLE_TYPES = ['Int', 'Bool', 'Real'] as const;
+
+/** Kinds of variable (DiagramEdits.VARIABLE_KINDS). */
+export const VARIABLE_KINDS = ['var', 'input', 'output'] as const;
+
+/** Connect a literal (one token: 3, 2.5, true, "text") to a free target. Answered like a move. */
+export interface AddLiteralRequest {
+  type: 'addLiteral';
+  file: string;
+  diagramType: string;
+  target: Endpoint;
+  value: string;
+}
+
+/** Add `<kind> <name>: <typeName>;` at (x, y). Answered like a move. */
+export interface AddVariableRequest {
+  type: 'addVariable';
+  file: string;
+  diagramType: string;
+  kind: (typeof VARIABLE_KINDS)[number];
+  name: string;
+  typeName: string;
+  x: number;
+  y: number;
+}
+
+/** Add an in- or out-parameter to the type's header, shown at (x, y). Answered like a move. */
+export interface AddParameterRequest {
+  type: 'addParameter';
+  file: string;
+  diagramType: string;
+  direction: 'in' | 'out';
+  name: string;
+  typeName: string;
+  x: number;
+  y: number;
+}
+
 export type ClientMessage =
   | OpenRequest
   | MoveRequest
   | ConnectRequest
   | DeleteRequest
   | AddBlockRequest
+  | AddLiteralRequest
+  | AddVariableRequest
+  | AddParameterRequest
   | RestoreRequest;
 
 export function webSocketUrl(): string {

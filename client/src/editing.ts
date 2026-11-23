@@ -10,12 +10,15 @@ export interface Editing {
   deleteItems: (items: { edges?: string[]; nodes?: string[] }) => void;
   /** The edge id of the connection a literal feeds, if it can be deleted; else null. */
   literalConnection: (literalId: string) => string | null;
+  /** A literal is being dragged from the palette: free input handles are highlighted. */
+  draggingLiteral: boolean;
 }
 
 export const EditingContext = createContext<Editing>({
   editable: false,
   deleteItems: () => {},
   literalConnection: () => null,
+  draggingLiteral: false,
 });
 
 export const useEditing = () => useContext(EditingContext);

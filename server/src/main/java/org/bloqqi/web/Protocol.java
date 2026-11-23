@@ -22,6 +22,11 @@ import com.google.gson.JsonParser;
  * client -> server  {"type":"delete", "file", "diagramType", "edges":[id,...], "nodes":[id,...]}
  *                   (nodes: blocks; optional)
  * client -> server  {"type":"addBlock", "file", "diagramType", "typeName", "x", "y"}
+ * client -> server  {"type":"addLiteral", "file", "diagramType", "target":{node,handle}, "value"}
+ * client -> server  {"type":"addVariable", "file", "diagramType", "kind", "name", "typeName", "x", "y"}
+ *                   (kind: var, input or output)
+ * client -> server  {"type":"addParameter", "file", "diagramType", "direction", "name", "typeName", "x", "y"}
+ *                   (direction: in or out)
  *                   (edits write the file and are answered with the new "diagram",
  *                    whose "change" is {before, after}: the file's text before and
  *                    after the edit; or with an "error" and the file unchanged)
@@ -53,7 +58,8 @@ final class Protocol {
 
 	/** A client -> server message. */
 	sealed interface Request
-			permits OpenRequest, MoveRequest, ConnectRequest, DeleteRequest, AddBlockRequest, RestoreRequest {
+			permits OpenRequest, MoveRequest, ConnectRequest, DeleteRequest, AddBlockRequest, AddLiteralRequest,
+			AddVariableRequest, AddParameterRequest, RestoreRequest {
 		String file();
 	}
 
@@ -77,6 +83,21 @@ final class Protocol {
 
 	/** Add a block of a palette type at (x, y) and save the file. */
 	record AddBlockRequest(String file, String diagramType, String typeName, int x, int y) implements Request {
+	}
+
+	/** Connect a literal to a free target and save the file. */
+	record AddLiteralRequest(String file, String diagramType, DiagramBuilder.Endpoint target, String value)
+			implements Request {
+	}
+
+	/** Add a variable at (x, y) and save the file. */
+	record AddVariableRequest(String file, String diagramType, String kind, String name, String typeName,
+			int x, int y) implements Request {
+	}
+
+	/** Add an in- or out-parameter at (x, y) and save the file. */
+	record AddParameterRequest(String file, String diagramType, boolean in, String name, String typeName,
+			int x, int y) implements Request {
 	}
 
 	/** Undo/redo: replace the file's text with {@code text} if it is still {@code expected}. */
@@ -131,6 +152,22 @@ final class Protocol {
 		if ("addBlock".equals(type)) {
 			return new AddBlockRequest(string(o, "file"), required(o, "diagramType"), required(o, "typeName"),
 					integer(o, "x"), integer(o, "y"));
+		}
+		if ("addLiteral".equals(type)) {
+			return new AddLiteralRequest(string(o, "file"), required(o, "diagramType"), endpoint(o, "target"),
+					required(o, "value"));
+		}
+		if ("addVariable".equals(type)) {
+			return new AddVariableRequest(string(o, "file"), required(o, "diagramType"), required(o, "kind"),
+					required(o, "name"), required(o, "typeName"), integer(o, "x"), integer(o, "y"));
+		}
+		if ("addParameter".equals(type)) {
+			String direction = required(o, "direction");
+			if (!direction.equals("in") && !direction.equals("out")) {
+				throw new IllegalArgumentException("direction must be in or out");
+			}
+			return new AddParameterRequest(string(o, "file"), required(o, "diagramType"), direction.equals("in"),
+					required(o, "name"), required(o, "typeName"), integer(o, "x"), integer(o, "y"));
 		}
 		if ("restore".equals(type)) {
 			return new RestoreRequest(string(o, "file"), string(o, "diagramType"),

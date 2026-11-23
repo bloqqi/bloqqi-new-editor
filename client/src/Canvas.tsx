@@ -18,7 +18,8 @@ import {
   type OnNodeDrag,
 } from '@xyflow/react';
 import { edgeTypes, type FlowEdgeType } from './FlowEdge';
-import { PALETTE_MIME } from './Palette';
+import type { FormRequest } from './AddForm';
+import { PALETTE_MIME, TOOL_MIME, type Tool } from './Palette';
 import { nodeTypes, type DiagramFlowNode } from './nodes';
 import type { DiagramMessage } from './protocol';
 
@@ -45,6 +46,24 @@ const FIT_OPTIONS = { padding: 0.2, maxZoom: 1.5 };
 
 /** Width of a new block (Layout.DEFAULT_WIDTH on the server). */
 const BLOCK_WIDTH = 60;
+
+/** How close (screen pixels) a literal must be dropped to a free input port. */
+const DROP_RADIUS = 24;
+
+/** The free input handle nearest to a point on the screen, within DROP_RADIUS. */
+function freeInputNear(x: number, y: number): { node: string; handle: string } | undefined {
+  let best: { node: string; handle: string } | undefined;
+  let bestDistance = DROP_RADIUS;
+  document.querySelectorAll<HTMLElement>('.react-flow__handle.target.handle--free').forEach((el) => {
+    const r = el.getBoundingClientRect();
+    const d = Math.hypot(r.left + r.width / 2 - x, r.top + r.height / 2 - y);
+    if (d <= bestDistance && el.dataset.nodeid && el.dataset.handleid) {
+      bestDistance = d;
+      best = { node: el.dataset.nodeid, handle: el.dataset.handleid };
+    }
+  });
+  return best;
+}
 
 /**
  * Top-left corner of what is drawn, in flow coordinates: the origin, unless a
@@ -77,6 +96,8 @@ export interface CanvasProps {
   onDelete: (selection: { nodes: DiagramFlowNode[]; edges: FlowEdgeType[] }) => void;
   /** A palette entry was dropped: add a block of the type with its top-left corner at (x, y). */
   onAddBlock: (typeName: string, x: number, y: number) => void;
+  /** A tool was dropped (literal: on the target port, if any): open its form. */
+  onTool: (request: Omit<FormRequest, 'suggestedName'>) => void;
   /** Called once the initial view of the diagram has been fitted. */
   onFitted: () => void;
 }
@@ -105,6 +126,7 @@ function Flow({
   isValidConnection,
   onDelete,
   onAddBlock,
+  onTool,
   onFitted,
 }: CanvasProps) {
   const flow = useReactFlow();
@@ -112,7 +134,8 @@ function Flow({
   // Dropping a palette entry adds a block, centred under the pointer.
   const onDragOver = useCallback(
     (event: React.DragEvent) => {
-      if (editable && event.dataTransfer.types.includes(PALETTE_MIME)) {
+      const types = event.dataTransfer.types;
+      if (editable && (types.includes(PALETTE_MIME) || types.includes(TOOL_MIME))) {
         event.preventDefault();
         event.dataTransfer.dropEffect = 'copy';
       }
@@ -121,13 +144,22 @@ function Flow({
   );
   const onDrop = useCallback(
     (event: React.DragEvent) => {
+      if (!editable) return;
       const typeName = event.dataTransfer.getData(PALETTE_MIME);
-      if (!editable || !typeName) return;
+      const tool = event.dataTransfer.getData(TOOL_MIME) as Tool | '';
+      if (!typeName && !tool) return;
       event.preventDefault();
       const p = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
-      onAddBlock(typeName, Math.max(0, Math.round(p.x - BLOCK_WIDTH / 2)), Math.max(0, Math.round(p.y - 10)));
+      const position = { x: Math.max(0, Math.round(p.x - BLOCK_WIDTH / 2)), y: Math.max(0, Math.round(p.y - 10)) };
+      if (typeName) {
+        onAddBlock(typeName, position.x, position.y);
+      } else if (tool) {
+        const screen = { x: event.clientX, y: event.clientY };
+        const target = tool === 'literal' ? freeInputNear(screen.x, screen.y) : undefined;
+        onTool({ tool, screen, position, target });
+      }
     },
-    [editable, flow, onAddBlock],
+    [editable, flow, onAddBlock, onTool],
   );
 
   // Deleting is an edit of the file: hand the selection to the app and let

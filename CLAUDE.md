@@ -48,7 +48,17 @@
   subtype), the reparse check refuses. The palette follows the old editor:
   the file's types except the shown one and abstract ones, then the standard
   library. Not supported yet: naming on drop, the feature/specialisation
-  wizards, parameters and variables.
+  wizards.
+- Literals, variables, parameters (palette "Add" section; a small form opens
+  at the drop): `addLiteral` appends `connect(<value>, <target>);` (one token,
+  `Program.parseLiteral`); `addVariable` inserts `<kind> <name>: <type>;`
+  after the last variable; `addParameter` edits the header (keeping the
+  file's `a: Int` / `Int a` order; parentheses added if missing). Names are
+  checked with `Program.isIdValid` and `lookup`; types are `Int`/`Bool`/`Real`
+  as in the old editor. Deleting parameters rewrites the text between the
+  header's parentheses from the remaining parameters' own text. Deleting a
+  parameter or variable that is used elsewhere (e.g. `acc1.in` in another
+  type) is refused by the reparse check.
 - Edits are checked by reparsing before anything is written; an edit that adds
   syntax errors or more semantic errors is refused. Files with syntax errors
   are not edited. Writes go through a temp file and an atomic move.

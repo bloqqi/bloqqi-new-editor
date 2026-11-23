@@ -124,6 +124,18 @@ body,
   color: var(--muted);
 }
 
+.palette__tools {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.palette__title--blocks {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
 .palette__group summary {
   padding: 4px 12px;
   font-weight: 600;
@@ -493,6 +505,59 @@ body,
 
 .flow__marker {
   fill: var(--local);
+}
+
+/* The form opened by dropping a tool (literal, variable, parameter). */
+.add-form {
+  position: fixed;
+  z-index: 20;
+  width: 240px;
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  font-size: 13px;
+}
+
+.add-form__title {
+  margin: 0;
+  font-size: 13px;
+}
+
+.add-form label {
+  display: grid;
+  grid-template-columns: 50px 1fr;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.add-form input,
+.add-form select {
+  min-width: 0;
+  font: inherit;
+  padding: 3px 6px;
+  color: var(--text);
+}
+
+.add-form__error {
+  margin: 0;
+  color: var(--error);
+  font-size: 12px;
+}
+
+.add-form__buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.add-form__buttons button {
+  font: inherit;
+  padding: 3px 12px;
 }
 
 .problems {

@@ -86,6 +86,12 @@ public final class DiagramSocket implements Session.Listener.AutoDemanding {
 					DiagramEdits.delete(file, delete.diagramType(), delete.edges(), delete.nodes()));
 			case Protocol.AddBlockRequest add -> save(file, add.diagramType(),
 					DiagramEdits.addBlock(file, add.diagramType(), add.typeName(), add.x(), add.y()));
+			case Protocol.AddLiteralRequest add -> save(file, add.diagramType(),
+					DiagramEdits.addLiteral(file, add.diagramType(), add.target(), add.value()));
+			case Protocol.AddVariableRequest add -> save(file, add.diagramType(), DiagramEdits.addVariable(file,
+					add.diagramType(), add.kind(), add.name(), add.typeName(), add.x(), add.y()));
+			case Protocol.AddParameterRequest add -> save(file, add.diagramType(), DiagramEdits.addParameter(file,
+					add.diagramType(), add.in(), add.name(), add.typeName(), add.x(), add.y()));
 		};
 	}
 

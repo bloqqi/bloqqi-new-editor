@@ -210,6 +210,11 @@ public final class DiagramBuilder {
 			return dt;
 		}
 
+		/** The parameter, block or variable with this id (access string), or null. */
+		Node node(String id) {
+			return nodesById.get(id);
+		}
+
 		/** The connection behind an edge id, or null. */
 		InheritedConnection connection(String edgeId) {
 			return connectionsById.get(edgeId);
@@ -276,7 +281,7 @@ public final class DiagramBuilder {
 				kind = Diagram.BLOCK;
 				typeName = b.type().name();
 				error = b.isOnTypeCycle() || b.isDataflowCircular();
-				deletable = b instanceof InheritedBlock ib && isDeletable(ib, dt);
+				deletable = isDeletable(b, dt);
 				in = ports(b.getInPorts());
 				out = ports(b.getOutPorts());
 			} else if (n instanceof Parameter p) {
@@ -284,12 +289,14 @@ public final class DiagramBuilder {
 				typeName = p.type().name();
 				outConnectable = canBeSource(p);
 				inConnectable = canBeTarget(p);
+				deletable = isDeletable(n, dt);
 			} else {
 				Variable v = (Variable) n;
 				kind = Diagram.VARIABLE;
 				typeName = v.type().name();
 				outConnectable = canBeSource(v);
 				inConnectable = canBeTarget(v);
+				deletable = isDeletable(n, dt);
 			}
 			return new DiagramNode(id, kind, labels.get(id), typeName,
 					n.isInherited(), n.isInlined(), error,
@@ -340,14 +347,36 @@ public final class DiagramBuilder {
 	}
 
 	/**
-	 * Whether the block can be deleted here: not inherited or inlined, and
-	 * declared by a statement in this type's body.
+	 * Whether a block, variable or parameter can be deleted here: not inherited
+	 * or inlined, and declared in this type (its body, or its header for
+	 * parameters).
 	 */
-	static boolean isDeletable(InheritedBlock b, DiagramType dt) {
-		Block declared = b.getDeclaredBlock();
-		var list = dt.getLocalBlockList();
-		return b.canDelete() && declared != null && declared.getParent() == list
+	static boolean isDeletable(Node n, DiagramType dt) {
+		ASTNode<?> declared = declaration(n);
+		ASTNode<?> list = n instanceof Block ? dt.getLocalBlockList()
+				: n instanceof Variable ? dt.getLocalVariableList()
+				: n instanceof org.bloqqi.compiler.ast.InParameter ? dt.getLocalInParameterList()
+				: n instanceof org.bloqqi.compiler.ast.OutParameter ? dt.getLocalOutParameterList()
+				: null;
+		return n.canDelete() && declared != null && list != null && declared.getParent() == list
 				&& within(declared, list);
+	}
+
+	/** The declaration behind a node of the diagram (the nodes are wrappers in NTA lists). */
+	static ASTNode<?> declaration(Node n) {
+		if (n instanceof InheritedBlock b) {
+			return b.getDeclaredBlock();
+		}
+		if (n instanceof InheritedVariable v) {
+			return v.getDeclaredVariable();
+		}
+		if (n instanceof InheritedInParameter p) {
+			return p.getDeclaredInParameter();
+		}
+		if (n instanceof InheritedOutParameter p) {
+			return p.getDeclaredOutParameter();
+		}
+		return null;
 	}
 
 	/** Whether a node's source position lies within another's. */

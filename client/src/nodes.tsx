@@ -46,10 +46,13 @@ function ConnectionHandle({
   title?: string;
 }) {
   const from = useConnectingFrom();
+  const editing = useEditing();
   const info = handleInfo(data, id);
   const connectable = canvasConnectable && !!info?.connectable;
   const classes = [className];
   if (connectable) classes.push('handle--free');
+  // A literal dragged from the palette can be dropped on any free input.
+  if (editing.draggingLiteral && connectable && info?.role === 'target') classes.push('handle--valid');
   if (from) {
     const self = from.node.id === data.id && from.handle === id;
     if (self) classes.push('handle--from');
@@ -147,34 +150,64 @@ export function BlockNode({ data, isConnectable, selected }: NodeProps<DiagramFl
 }
 
 /** In-parameter: box with a triangle pointing right (into the diagram). */
-export function InParameterNode({ data, isConnectable }: NodeProps<DiagramFlowNode>) {
+export function InParameterNode({ data, isConnectable, selected }: NodeProps<DiagramFlowNode>) {
+  const editing = useEditing();
   return (
+    <>
     <div className={nodeClasses('parameter', data) + ' parameter--in'} title={`in ${data.id}: ${data.typeName}`}>
       <span className="node__label">{data.label}</span>
       <span className="parameter__marker" aria-hidden="true" />
       <EdgeHandles data={data} isConnectable={isConnectable} />
     </div>
+    {selected && editing.editable && data.deletable && (
+      <NodeDeleteButton
+        label="Delete parameter"
+        className="delete-button--block"
+        onClick={() => editing.deleteItems({ nodes: [data.id] })}
+      />
+    )}
+    </>
   );
 }
 
 /** Out-parameter: box with a bar on the left (where connections arrive). */
-export function OutParameterNode({ data, isConnectable }: NodeProps<DiagramFlowNode>) {
+export function OutParameterNode({ data, isConnectable, selected }: NodeProps<DiagramFlowNode>) {
+  const editing = useEditing();
   return (
+    <>
     <div className={nodeClasses('parameter', data) + ' parameter--out'} title={`out ${data.id}: ${data.typeName}`}>
       <span className="parameter__marker" aria-hidden="true" />
       <span className="node__label">{data.label}</span>
       <EdgeHandles data={data} isConnectable={isConnectable} />
     </div>
+    {selected && editing.editable && data.deletable && (
+      <NodeDeleteButton
+        label="Delete parameter"
+        className="delete-button--block"
+        onClick={() => editing.deleteItems({ nodes: [data.id] })}
+      />
+    )}
+    </>
   );
 }
 
 /** Variable: plain box labelled `kind name`. */
-export function VariableNode({ data, isConnectable }: NodeProps<DiagramFlowNode>) {
+export function VariableNode({ data, isConnectable, selected }: NodeProps<DiagramFlowNode>) {
+  const editing = useEditing();
   return (
+    <>
     <div className={nodeClasses('variable', data)} title={`${data.id}: ${data.typeName}`}>
       <span className="node__label">{data.label}</span>
       <EdgeHandles data={data} isConnectable={isConnectable} />
     </div>
+    {selected && editing.editable && data.deletable && (
+      <NodeDeleteButton
+        label="Delete variable"
+        className="delete-button--block"
+        onClick={() => editing.deleteItems({ nodes: [data.id] })}
+      />
+    )}
+    </>
   );
 }
 

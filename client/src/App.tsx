@@ -13,7 +13,8 @@ import { Canvas, type Extent } from './Canvas';
 import { canConnect } from './connections';
 import { EditingContext, type Editing } from './editing';
 import { UndoHistory } from './history';
-import { Palette } from './Palette';
+import { AddForm, type FormRequest, type FormValues } from './AddForm';
+import { Palette, type Tool } from './Palette';
 import { type FlowEdgeType } from './FlowEdge';
 import { type DiagramFlowNode } from './nodes';
 import {
@@ -42,7 +43,7 @@ type Status = 'connecting' | 'open' | 'reconnecting';
  * What a request was for. The server answers requests in order, so a queue of
  * these tells what each answer ("diagram" or "error") belongs to.
  */
-type RequestKind = 'open' | 'edit' | 'undo' | 'redo';
+type RequestKind = 'open' | 'edit' | 'form' | 'undo' | 'redo';
 
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
 const UNDO_KEYS = IS_MAC ? '⌘Z' : 'Ctrl+Z';
@@ -144,6 +145,16 @@ function toFlowEdges(diagram: DiagramMessage | null): FlowEdgeType[] {
   }));
 }
 
+/** `base` (or `base2`, `base3`, ...) if no node of the diagram has that name. */
+function unusedName(base: string, diagram: DiagramMessage | null): string {
+  if (!base) return '';
+  const used = new Set((diagram?.nodes ?? []).map((n) => n.id.split('::').pop()!));
+  if (!used.has(base)) return base;
+  for (let i = 2; ; i++) {
+    if (!used.has(`${base}${i}`)) return `${base}${i}`;
+  }
+}
+
 /** Keeps ?file=…&type=… in the address bar so a view can be reloaded or linked. */
 function updateUrl(file: string, diagramType: string | null) {
   const params = new URLSearchParams();
@@ -158,6 +169,11 @@ export function App() {
   const [files, setFiles] = useState<string[]>([]);
   const [diagram, setDiagram] = useState<DiagramMessage | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The form opened by dropping a tool (literal, variable, parameter), and the
+  // server's reason if its last submission was refused.
+  const [form, setForm] = useState<FormRequest | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [draggingLiteral, setDraggingLiteral] = useState(false);
 
   const history = useRef(new UndoHistory());
   const [, historyChanged] = useReducer((n: number) => n + 1, 0);
@@ -246,6 +262,10 @@ export function App() {
               else h.record(message.file, { diagramType: message.diagramType, ...message.change });
               historyChanged();
             }
+            if (request?.kind === 'form') {
+              setForm(null);
+              setFormError(null);
+            }
             setDiagram(message);
             setError(null);
             updateUrl(message.file, message.diagramType);
@@ -258,6 +278,8 @@ export function App() {
               history.current.clear(request.file);
               historyChanged();
               setError(`${message.message}. The undo history of ${request.file} has been cleared.`);
+            } else if (request?.kind === 'form') {
+              setFormError(message.message); // shown in the form, which stays open
             } else {
               setError(message.message);
             }
@@ -440,7 +462,7 @@ export function App() {
       for (const n of selectedNodes) {
         const id = literalConnections.get(n.id);
         if (id) edgeIds.add(id);
-        else if (n.type === 'block' && n.data.deletable) nodeIds.push(n.id);
+        else if (n.data.deletable) nodeIds.push(n.id); // blocks, variables, parameters
       }
       deleteItems({ edges: [...edgeIds], nodes: nodeIds });
     },
@@ -448,13 +470,54 @@ export function App() {
   );
 
   const editable = status === 'open' && !!diagram?.diagramType && !diagram.readOnly;
+  /** A tool was dropped: open its form (a literal needs a free input port to feed). */
+  const onTool = useCallback(
+    (request: Omit<FormRequest, 'suggestedName'>) => {
+      setDraggingLiteral(false);
+      if (request.tool === 'literal' && !request.target) {
+        setError('Drop the literal on a free input port (they light up green while you drag).');
+        return;
+      }
+      const base: Record<Tool, string> = { literal: '', variable: 'v', inParameter: 'in', outParameter: 'out' };
+      setFormError(null);
+      setForm({ ...request, suggestedName: unusedName(base[request.tool], diagram) });
+    },
+    [diagram],
+  );
+
+  const submitForm = useCallback(
+    (values: FormValues) => {
+      if (!form || !diagram?.diagramType) return;
+      const common = { file: diagram.file, diagramType: diagram.diagramType };
+      const { x, y } = form.position;
+      const name = values.name ?? '';
+      const typeName = values.typeName ?? 'Int';
+      switch (form.tool) {
+        case 'literal':
+          send({ ...common, type: 'addLiteral', target: form.target!, value: values.value ?? '' }, 'form');
+          break;
+        case 'variable':
+          send({ ...common, type: 'addVariable', kind: values.kind ?? 'var', name, typeName, x, y }, 'form');
+          break;
+        case 'inParameter':
+        case 'outParameter': {
+          const direction = form.tool === 'inParameter' ? 'in' : 'out';
+          send({ ...common, type: 'addParameter', direction, name, typeName, x, y }, 'form');
+          break;
+        }
+      }
+    },
+    [form, diagram, send],
+  );
+
   const editing = useMemo<Editing>(
     () => ({
       editable,
       deleteItems,
       literalConnection: (literalId) => literalConnections.get(literalId) ?? null,
+      draggingLiteral,
     }),
-    [editable, deleteItems, literalConnections],
+    [editable, deleteItems, literalConnections, draggingLiteral],
   );
 
   // Edges are controlled too, so that they can be selected (for Delete); every
@@ -527,7 +590,13 @@ export function App() {
       )}
 
       <div className="workarea">
-        {diagram?.diagramType && <Palette entries={diagram.palette} editable={editable} />}
+        {diagram?.diagramType && (
+          <Palette
+            entries={diagram.palette}
+            editable={editable}
+            onDragTool={(tool) => setDraggingLiteral(tool === 'literal')}
+          />
+        )}
         <main className="canvas" data-fitted={fittedKey === diagramKey}>
           {diagram && !diagram.diagramType && (
             <p className="empty">
@@ -550,10 +619,24 @@ export function App() {
               isValidConnection={isValidConnection}
               onDelete={onDelete}
               onAddBlock={addBlock}
+              onTool={onTool}
               onFitted={onFitted}
             />
           </EditingContext.Provider>
         </main>
+        {form && (
+          <AddForm
+            key={`${form.tool}@${form.screen.x},${form.screen.y}`}
+            request={form}
+            error={formError}
+            busy={pendingCount > 0}
+            onSubmit={submitForm}
+            onCancel={() => {
+              setForm(null);
+              setFormError(null);
+            }}
+          />
+        )}
       </div>
 
       {diagram && diagram.problems.length > 0 && (
