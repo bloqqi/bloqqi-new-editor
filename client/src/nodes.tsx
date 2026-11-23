@@ -1,5 +1,6 @@
 import { Handle, Position, useConnection, type Node, type NodeProps } from '@xyflow/react';
 import { canConnect, handleInfo } from './connections';
+import { useEditing } from './editing';
 import type { DiagramNode, NodeKind } from './protocol';
 
 export type DiagramFlowNode = Node<DiagramNode & Record<string, unknown>, NodeKind>;
@@ -144,12 +145,35 @@ export function VariableNode({ data, isConnectable }: NodeProps<DiagramFlowNode>
   );
 }
 
-/** Literal: just its text, left of the port it feeds. Its handle is never connectable. */
-export function LiteralNode({ data }: NodeProps<DiagramFlowNode>) {
+/**
+ * Literal: just its text, left of the port it feeds. Its handle is never
+ * connectable. When selected, a × below it deletes its connection.
+ */
+export function LiteralNode({ data, selected }: NodeProps<DiagramFlowNode>) {
+  const editing = useEditing();
+  const connection = editing.literalConnection(data.id);
   return (
     <div className="literal" title={`${data.label}: ${data.typeName}`}>
       {data.label}
       <EdgeHandles data={data} isConnectable={false} />
+      {selected && editing.editable && connection && (
+        <button
+          type="button"
+          className="delete-button delete-button--literal nodrag nopan"
+          title="Delete literal (Delete)"
+          aria-label="Delete literal"
+          // Keep React Flow from treating the press as a click on the canvas, which
+          // would clear the selection (and remove this button) before the click.
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            editing.deleteConnections([connection]);
+          }}
+        >
+          ×
+        </button>
+      )}
     </div>
   );
 }

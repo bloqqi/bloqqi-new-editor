@@ -224,6 +224,7 @@ body,
 }
 
 .literal {
+  position: relative;
   width: 100%;
   height: 100%;
   font-size: 11px;
@@ -347,6 +348,38 @@ body,
 .react-flow__node-literal.selected .literal {
   border-radius: 2px;
   box-shadow: 0 0 0 2px rgba(31, 79, 209, 0.35);
+}
+
+/* The × on a selected connection (at its middle) or literal (below it). */
+.delete-button {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font: 600 14px/1 system-ui, sans-serif;
+  color: var(--muted);
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  pointer-events: all;
+}
+
+.delete-button:hover,
+.delete-button:focus-visible {
+  color: #ffffff;
+  background: var(--flow-error);
+  border-color: var(--flow-error);
+}
+
+/* Below the literal: literals sit near the left edge, where a button to their left could be cut off. */
+.delete-button--literal {
+  top: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 .flow__marker {

@@ -357,10 +357,13 @@ Items appear only when enabled (`ContextMenu.buildContextMenu`):
 | **Extract subtype as recommendation** | always shown | Error if `dt.isLocallyEmpty()` or `!dt.canExtractSubtypeAsBlock()` (`RecommendationSupport.jrag`). Asks for a new type name and a "feature name". `ExtractSubTypeAsRecommendationCommand` (needs exactly one direct super type, otherwise it does nothing) calls `dt.extractsubTypeAsWiredBlock(...)` (`SubTypeWrapperCreator`) and appends the new `DiagramType` with a `wiring` and a `recommendation Super { NewType[...] name; }` to the unit. The current type is left unchanged. |
 | **Diagram properties…** | always | §4.3 |
 
-**Toolbar** (`BloqqiActionBarContributor`): Undo, Redo, Delete, **Auto layout**
+**Toolbar** (`BloqqiActionBarContributor`): **Auto layout**
 (`AutoLayoutCommand`: KLay on the whole type, undoable), **Show types**
-(toggles a global preference and redraws), and a zoom combo. A Print action is
-registered. `ChangeNameDisplayedAction` (which cycles parameter labels between
+(toggles a global preference and redraws), and a zoom combo. Undo, Redo and
+Delete are *not* on the toolbar: the lines adding them are commented out
+(`contributeToToolBar`); they are reached through Eclipse's Edit menu
+(retarget actions), the canvas context menu (Delete) and the keyboard. A
+Print action is registered. `ChangeNameDisplayedAction` (which cycles parameter labels between
 showing and hiding names) is registered but **reachable from no menu**.
 Keyboard: the standard Eclipse bindings for undo, redo and delete.
 

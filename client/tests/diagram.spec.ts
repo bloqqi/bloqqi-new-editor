@@ -308,12 +308,42 @@ test.describe.serial('moving nodes', () => {
     await expect(node(page, '#literal:acc1.in:in')).toHaveCount(0);
     expect(readFileSync(dragFile, 'utf8')).not.toContain('connect(1, acc1.in);');
   });
+
+  test('the × on a selected connection deletes it', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Acc');
+    const button = page.getByRole('button', { name: 'Delete connection', exact: true });
+    await expect(button).toHaveCount(0);
+
+    // Click the connection just right of state's output (in Acc it overlaps
+    // add.out -> state elsewhere, so the centre of its box is ambiguous).
+    const start = (await handle(page, 'state', 'out').boundingBox())!;
+    await page.mouse.click(start.x + start.width / 2 + 6, start.y + start.height / 2);
+    await expect(edge(page, 'state.out->add.in:in2')).toHaveClass(/selected/);
+    await expect(button).toHaveCount(1);
+    await button.click();
+
+    await expect(edge(page, 'state.out->add.in:in2')).toHaveCount(0);
+    expect(readFileSync(dragFile, 'utf8')).not.toContain('connect(state, add.in2);');
+    await expect(button).toHaveCount(0);
+  });
+
+  test('the × on a selected literal deletes its connection', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Main');
+    const literal = node(page, '#literal:acc2.in:in');
+    await literal.click();
+    await page.getByRole('button', { name: 'Delete literal', exact: true }).click();
+    await expect(literal).toHaveCount(0);
+    expect(readFileSync(dragFile, 'utf8')).not.toContain('connect(2, acc2.in);');
+  });
 });
 
 test('inherited connections cannot be selected', async ({ page }) => {
   await goto(page, '/?file=PLib.dia&type=PTrack');
   const inherited = edge(page, 'P::e.out:out->P::PPart.in:in1');
   await expect(inherited).not.toHaveClass(/selectable/);
+  // Clicking it selects nothing, so no × appears.
+  await inherited.click({ force: true });
+  await expect(page.getByRole('button', { name: 'Delete connection', exact: true })).toHaveCount(0);
   await expect(edge(page, 'Track.out->SelReal_1.in:sel')).toHaveClass(/selectable/);
 });
 

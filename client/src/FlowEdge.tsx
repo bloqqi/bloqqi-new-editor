@@ -1,4 +1,5 @@
-import { BaseEdge, type Edge, type EdgeProps } from '@xyflow/react';
+import { BaseEdge, EdgeLabelRenderer, type Edge, type EdgeProps } from '@xyflow/react';
+import { useEditing } from './editing';
 import type { DiagramEdge } from './protocol';
 
 export type FlowEdgeType = Edge<DiagramEdge & Record<string, unknown>, 'flow'>;
@@ -71,7 +72,33 @@ function lineClass(data: DiagramEdge, inherited: boolean, selected: boolean): st
   return classes.join(' ');
 }
 
+/** A × button that deletes one connection, drawn at a point in flow coordinates. */
+export function DeleteButton({ x, y, label, onClick }: { x: number; y: number; label: string; onClick: () => void }) {
+  return (
+    <EdgeLabelRenderer>
+      <button
+        type="button"
+        className="delete-button nodrag nopan"
+        style={{ transform: `translate(-50%, -50%) translate(${x}px, ${y}px)` }}
+        title={`${label} (Delete)`}
+        aria-label={label}
+        // Keep React Flow from treating the press as a click on the canvas, which
+        // would clear the selection (and remove this button) before the click.
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick();
+        }}
+      >
+        ×
+      </button>
+    </EdgeLabelRenderer>
+  );
+}
+
 export function FlowEdge({ id, sourceX, sourceY, targetX, targetY, data, markerEnd, selected }: EdgeProps<FlowEdgeType>) {
+  const editing = useEditing();
   const isSelected = !!selected;
   if (!data) return null;
   const points = route(sourceX, sourceY, targetX, targetY);
@@ -79,12 +106,20 @@ export function FlowEdge({ id, sourceX, sourceY, targetX, targetY, data, markerE
   // A selected connection gets a halo behind it (not a thicker line: arrow
   // heads are sized in units of the line width).
   const halo = isSelected ? <path d={toPath(points)} className="flow__halo" /> : null;
+  let deleteButton = null;
+  if (isSelected && data.deletable && editing.editable) {
+    const [mx, my] = splitAtMiddle(points).mid;
+    deleteButton = (
+      <DeleteButton x={mx} y={my} label="Delete connection" onClick={() => editing.deleteConnections([id])} />
+    );
+  }
 
   if (!data.intercept || data.inherited) {
     return (
       <>
         {halo}
         <BaseEdge id={id} path={toPath(points)} markerEnd={markerEnd} className={lineClass(data, data.inherited, isSelected)} />
+        {deleteButton}
       </>
     );
   }
@@ -111,6 +146,7 @@ export function FlowEdge({ id, sourceX, sourceY, targetX, targetY, data, markerE
         width={size}
         height={size}
       />
+      {deleteButton}
     </g>
   );
 }

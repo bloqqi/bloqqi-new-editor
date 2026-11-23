@@ -11,6 +11,7 @@ import {
 } from '@xyflow/react';
 import { Canvas, type Extent } from './Canvas';
 import { canConnect } from './connections';
+import { EditingContext, type Editing } from './editing';
 import { type FlowEdgeType } from './FlowEdge';
 import { type DiagramFlowNode } from './nodes';
 import {
@@ -310,19 +311,41 @@ export function App() {
   );
 
   /** Delete the selected connections; a selected literal stands for the connection it feeds. */
-  const onDelete = useCallback(
-    ({ nodes: selectedNodes, edges: selectedEdges }: { nodes: DiagramFlowNode[]; edges: FlowEdgeType[] }) => {
-      if (!diagram?.diagramType) return;
-      const literals = new Set(selectedNodes.filter((n) => n.type === 'literal').map((n) => n.id));
-      const ids = new Set(selectedEdges.filter((e) => e.data?.deletable).map((e) => e.id));
-      for (const e of diagram.edges) {
-        if (e.deletable && literals.has(e.source)) ids.add(e.id);
-      }
-      if (ids.size > 0) {
-        send({ type: 'delete', file: diagram.file, diagramType: diagram.diagramType, edges: [...ids] });
+  const deleteConnections = useCallback(
+    (edgeIds: string[]) => {
+      if (diagram?.diagramType && edgeIds.length > 0) {
+        send({ type: 'delete', file: diagram.file, diagramType: diagram.diagramType, edges: edgeIds });
       }
     },
     [diagram, send],
+  );
+
+  /** Literal id -> the deletable connection it feeds. */
+  const literalConnections = useMemo(
+    () => new Map((diagram?.edges ?? []).filter((e) => e.fromLiteral && e.deletable).map((e) => [e.source, e.id])),
+    [diagram],
+  );
+
+  const onDelete = useCallback(
+    ({ nodes: selectedNodes, edges: selectedEdges }: { nodes: DiagramFlowNode[]; edges: FlowEdgeType[] }) => {
+      const ids = new Set(selectedEdges.filter((e) => e.data?.deletable).map((e) => e.id));
+      for (const n of selectedNodes) {
+        const id = literalConnections.get(n.id);
+        if (id) ids.add(id);
+      }
+      deleteConnections([...ids]);
+    },
+    [literalConnections, deleteConnections],
+  );
+
+  const editable = status === 'open' && !!diagram?.diagramType && !diagram.readOnly;
+  const editing = useMemo<Editing>(
+    () => ({
+      editable,
+      deleteConnections,
+      literalConnection: (literalId) => literalConnections.get(literalId) ?? null,
+    }),
+    [editable, deleteConnections, literalConnections],
   );
 
   // Edges are controlled too, so that they can be selected (for Delete); every
@@ -394,20 +417,22 @@ export function App() {
               : `${diagram.file} has no diagram types.`}
           </p>
         )}
-        <Canvas
-          key={diagramKey}
-          diagram={diagram}
-          nodes={nodes}
-          edges={edges}
-          editable={status === 'open' && !!diagram?.diagramType && !diagram.readOnly}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onNodeDragStop={onNodeDragStop}
-          onConnect={onConnect}
-          isValidConnection={isValidConnection}
-          onDelete={onDelete}
-          onFitted={onFitted}
-        />
+        <EditingContext.Provider value={editing}>
+          <Canvas
+            key={diagramKey}
+            diagram={diagram}
+            nodes={nodes}
+            edges={edges}
+            editable={editable}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onNodeDragStop={onNodeDragStop}
+            onConnect={onConnect}
+            isValidConnection={isValidConnection}
+            onDelete={onDelete}
+            onFitted={onFitted}
+          />
+        </EditingContext.Provider>
       </main>
 
       {diagram && diagram.problems.length > 0 && (
