@@ -15,8 +15,15 @@
   behaviour against; it is described in `docs/editor-spec.md`. It is not part
   of the build. Don't edit it.
 - Server (`server/`): Java 21, Jetty 12 (core, no servlets). It serves the built
-  client and a WebSocket at `/ws`. It has no state: every request reloads the
-  file from the workspace directory.
+  client and a WebSocket at `/ws`. Every request reloads the file from the
+  workspace directory; the server keeps no model. Each socket only remembers
+  what its client shows (file, type, and the text it was built from):
+  `WorkspaceWatcher` reports changed `*.dia` files, and a socket whose file now
+  has other text pushes an `update` (so other tabs and text-editor changes show
+  up; the socket's own edits are not echoed). New/deleted files push `files`;
+  a deleted shown file a `notice`. Pushed messages are never answers, so the
+  client's request queue ignores them; an `update` clears that file's undo
+  history.
 - Client (`client/`): React + React Flow (`@xyflow/react`), built with Vite.
   `App.tsx` only composes: `useServer` (WebSocket, request queue, shown
   diagram, undo/redo), `useDiagramFlow` (React Flow nodes/edges, selection,
@@ -157,6 +164,12 @@ run `ant test e2e`, then commit the submodule pointer.
   the compiler copies statements from `wiring` declarations into the types
   that use them, *with their original positions*, so check that a statement's
   position lies inside the type before editing it (`DiagramBuilder.isDeclaredIn`).
+- **Saving by rename is not atomic on every file system.** On Docker
+  Desktop's folders shared from macOS (e.g. `/workspace` here), another process
+  can find the file missing while `Workspace.write` renames the temporary file
+  onto it (measured: ~20% of concurrent reads). `Workspace` reads therefore
+  retry briefly, and the browser tests read `Drag.dia` through `readDrag()`.
+  Also, the JDK's `WatchService` polls on macOS, so changes there take seconds.
 - **Broken examples:** five files in `examples/` don't load cleanly and are
   excluded from `ExamplesLoadTest`; the list and reasons are in
   `server/src/test/java/org/bloqqi/web/Examples.java`.

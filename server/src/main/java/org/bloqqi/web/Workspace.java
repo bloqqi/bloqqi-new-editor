@@ -11,6 +11,11 @@ import java.util.stream.Stream;
 /**
  * A directory of Bloqqi files. Only plain {@code *.dia} files directly in the
  * directory are visible; names with path separators are rejected.
+ *
+ * <p>Reads retry briefly when a file seems to be missing: replacing a file by
+ * renaming another onto it (as this class and many editors do) is atomic on
+ * local file systems, but not on all shared ones (e.g. Docker Desktop's
+ * folders shared from macOS), where it can be gone for a moment.
  */
 public final class Workspace {
 	private final Path root;
@@ -39,8 +44,36 @@ public final class Workspace {
 	}
 
 	public LoadedFile load(String fileName) throws IOException {
+		return BloqqiLoader.load(fileName, read(fileName));
+	}
+
+	/** How often, and how far apart, a read retries a file that seems to be missing. */
+	private static final int READ_ATTEMPTS = 10;
+	private static final long READ_RETRY_MILLIS = 20;
+
+	/**
+	 * The text of a workspace file.
+	 *
+	 * @throws IllegalArgumentException if the name is invalid or the file does
+	 *         not exist (also after a few short retries)
+	 */
+	private String read(String fileName) throws IOException {
 		Path path = resolve(fileName);
-		return BloqqiLoader.load(fileName, Files.readString(path, StandardCharsets.UTF_8));
+		for (int attempt = 1;; attempt++) {
+			try {
+				return Files.readString(path, StandardCharsets.UTF_8);
+			} catch (java.nio.file.NoSuchFileException missing) {
+				if (attempt == READ_ATTEMPTS) {
+					throw new IllegalArgumentException("No such file in workspace: " + fileName);
+				}
+				try {
+					Thread.sleep(READ_RETRY_MILLIS);
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+					throw missing;
+				}
+			}
+		}
 	}
 
 	/**
@@ -49,6 +82,7 @@ public final class Workspace {
 	 * half-written file.
 	 */
 	public void write(String fileName, String text) throws IOException {
+		read(fileName); // must exist
 		Path path = resolve(fileName);
 		Path tmp = Files.createTempFile(root, "." + fileName + ".", ".tmp");
 		try {
@@ -68,7 +102,7 @@ public final class Workspace {
 	 * @throws IllegalArgumentException if the file has other contents
 	 */
 	public String replace(String fileName, String expected, String text) throws IOException {
-		String current = Files.readString(resolve(fileName), StandardCharsets.UTF_8);
+		String current = read(fileName);
 		if (!current.equals(expected)) {
 			throw new IllegalArgumentException(fileName
 					+ " has been changed since (in another editor or tab), so the change cannot be undone or redone");
@@ -86,7 +120,7 @@ public final class Workspace {
 			throw new IllegalArgumentException("Invalid file name: " + fileName);
 		}
 		Path path = root.resolve(fileName).normalize();
-		if (!path.getParent().equals(root) || !Files.isRegularFile(path)) {
+		if (!path.getParent().equals(root) || Files.isDirectory(path)) {
 			throw new IllegalArgumentException("No such file in workspace: " + fileName);
 		}
 		return path;

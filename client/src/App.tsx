@@ -146,6 +146,11 @@ export function App() {
           {server.error}
         </div>
       )}
+      {server.notice && (
+        <div className="banner banner--info" role="status" data-testid="notice">
+          {server.notice}
+        </div>
+      )}
       {diagram?.diagramType && diagram.readOnly && (
         <div className="banner banner--info" data-testid="read-only">
           Read-only: {diagram.readOnly}

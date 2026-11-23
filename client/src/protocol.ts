@@ -117,7 +117,30 @@ export interface ErrorMessage {
   message: string;
 }
 
-export type ServerMessage = WorkspaceMessage | DiagramMessage | ErrorMessage;
+/** Pushed (not an answer): the shown file changed on disk (another tab, a text editor). */
+export interface UpdateMessage extends Omit<DiagramMessage, 'type'> {
+  type: 'update';
+}
+
+/** Pushed: the workspace's files changed (created, deleted, renamed). */
+export interface FilesMessage {
+  type: 'files';
+  files: string[];
+}
+
+/** Pushed: a message for the user (e.g. the shown file was deleted). */
+export interface NoticeMessage {
+  type: 'notice';
+  message: string;
+}
+
+export type ServerMessage =
+  | WorkspaceMessage
+  | DiagramMessage
+  | ErrorMessage
+  | UpdateMessage
+  | FilesMessage
+  | NoticeMessage;
 
 export interface OpenRequest {
   type: 'open';

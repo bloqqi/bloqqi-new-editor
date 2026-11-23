@@ -56,6 +56,11 @@ import com.google.gson.JsonParser;
  *                    "palette":[{name,group,kind,doc}], "superTypes":[...],
  *                    "change": null, or {before, after} if the request changed the file}
  * server -> client  {"type":"error", "message"}
+ *
+ * Messages the server sends on its own (not answers to a request):
+ * server -> client  {"type":"update", ...as "diagram"...}  the shown file changed on disk
+ * server -> client  {"type":"files", "files":[...]}        the workspace's files changed
+ * server -> client  {"type":"notice", "message"}           e.g. the shown file was deleted
  * </pre>
  *
  * Gson 2.6.2 (the version the compiler uses) does not know records, so the
@@ -277,8 +282,35 @@ final class Protocol {
 		return diagram(d, null);
 	}
 
+	/** A diagram pushed because its file changed on disk (not an answer). */
+	static String update(Diagram d) {
+		JsonObject o = diagramJson(d, null);
+		o.addProperty("type", "update");
+		return GSON.toJson(o);
+	}
+
+	/** The workspace's files, pushed when they change (not an answer). */
+	static String files(List<String> files) {
+		JsonObject o = new JsonObject();
+		o.addProperty("type", "files");
+		o.add("files", strings(files));
+		return GSON.toJson(o);
+	}
+
+	/** A message for the user, pushed (not an answer). */
+	static String notice(String message) {
+		JsonObject o = new JsonObject();
+		o.addProperty("type", "notice");
+		o.addProperty("message", message);
+		return GSON.toJson(o);
+	}
+
 	/** A diagram, with the change that the request made to the file (or null). */
 	static String diagram(Diagram d, Change change) {
+		return GSON.toJson(diagramJson(d, change));
+	}
+
+	private static JsonObject diagramJson(Diagram d, Change change) {
 		JsonObject o = new JsonObject();
 		o.addProperty("type", "diagram");
 		o.addProperty("file", d.file());
@@ -352,7 +384,7 @@ final class Protocol {
 			c.addProperty("after", change.after());
 			o.add("change", c);
 		}
-		return GSON.toJson(o);
+		return o;
 	}
 
 	static String error(String message) {

@@ -1,8 +1,12 @@
 package org.bloqqi.web;
 
+import java.io.IOException;
 import java.nio.file.Files;
-import java.time.Duration;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.eclipse.jetty.server.Handler;
 import org.eclipse.jetty.server.Server;
@@ -13,7 +17,8 @@ import org.eclipse.jetty.websocket.server.WebSocketUpgradeHandler;
 
 /**
  * HTTP server: the built client (static files) on {@code /} and the diagram
- * WebSocket on {@code /ws}.
+ * WebSocket on {@code /ws}. It watches the workspace and tells the open
+ * sockets about changed files, so that every tab shows the files as they are.
  */
 public final class WebServer {
 	public static final String WEBSOCKET_PATH = "/ws";
@@ -26,7 +31,13 @@ public final class WebServer {
 	public static final Duration IDLE_TIMEOUT = Duration.ofSeconds(30);
 	public static final Duration PING_INTERVAL = Duration.ofSeconds(10);
 
+	private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(WebServer.class);
+
 	private final Server server;
+	private final Workspace workspace;
+	private final Set<DiagramSocket> sockets = ConcurrentHashMap.newKeySet();
+	private final WorkspaceWatcher watcher;
+	private List<String> files = List.of();
 
 	/**
 	 * @param port      TCP port (0 = pick a free port)
@@ -40,6 +51,8 @@ public final class WebServer {
 	/** As above, with explicit WebSocket timing (for tests). */
 	WebServer(int port, Workspace workspace, Path staticDir, Duration idleTimeout, Duration pingInterval) {
 		server = new Server(port);
+		this.workspace = workspace;
+		this.watcher = new WorkspaceWatcher(workspace.root(), server.getScheduler(), this::changed);
 
 		Handler content;
 		if (staticDir != null) {
@@ -59,7 +72,7 @@ public final class WebServer {
 		WebSocketUpgradeHandler ws = WebSocketUpgradeHandler.from(server, container -> {
 			container.setIdleTimeout(idleTimeout);
 			container.addMapping(WEBSOCKET_PATH, (request, response, callback) ->
-					new DiagramSocket(workspace, server.getScheduler(), pingInterval));
+					new DiagramSocket(workspace, server.getScheduler(), pingInterval, sockets));
 		});
 		ws.setHandler(content);
 		server.setHandler(ws);
@@ -67,10 +80,37 @@ public final class WebServer {
 
 	public void start() throws Exception {
 		server.start();
+		files = workspace.files();
+		watcher.start();
 	}
 
 	public void stop() throws Exception {
+		watcher.close();
 		server.stop();
+	}
+
+	/** Files changed on disk: tell the sockets (null: possibly all of them). */
+	private void changed(Set<String> names) {
+		try {
+			List<String> now = workspace.files();
+			boolean listChanged;
+			synchronized (this) {
+				listChanged = !now.equals(files);
+				files = now;
+			}
+			for (DiagramSocket s : sockets) {
+				if (listChanged) {
+					s.filesChanged(now);
+				}
+				if (names.contains(null)) {
+					s.fileChanged(null);
+				} else {
+					names.forEach(s::fileChanged);
+				}
+			}
+		} catch (IOException e) {
+			LOG.warn("Could not list the workspace", e);
+		}
 	}
 
 	public void join() throws InterruptedException {

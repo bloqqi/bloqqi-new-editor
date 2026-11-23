@@ -149,6 +149,24 @@ test('reconnects and reopens the diagram when the connection drops', async ({ pa
   await expect(node(page, 'add')).toBeVisible();
 });
 
+const dragFile = resolve('..', 'build', 'e2e-workspace', 'Drag.dia');
+
+/**
+ * Drag.dia's text. Retries briefly when the file seems to be missing: the
+ * server saves by renaming a temporary file onto it, which is not atomic for
+ * other processes on some shared folders (e.g. Docker Desktop on macOS).
+ */
+function readDrag(): string {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return readFileSync(dragFile, 'utf8');
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT' || attempt >= 50) throw e;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+    }
+  }
+}
+
 /** Drags a node by (dx, dy) screen pixels with the mouse. */
 async function drag(page: Page, id: string, dx: number, dy: number) {
   const box = (await node(page, id).boundingBox())!;
@@ -164,19 +182,18 @@ async function drag(page: Page, id: string, dx: number, dy: number) {
 // Drag.dia is a copy of TwoCounters.dia that only these tests edit (see the
 // e2e-workspace target in build.xml).
 test.describe.serial('moving nodes', () => {
-  const dragFile = resolve('..', 'build', 'e2e-workspace', 'Drag.dia');
 
   test('dragging a block stores its position in the file', async ({ page }) => {
     await goto(page, '/?file=Drag.dia&type=Acc');
     await expect(node(page, 'add')).toBeVisible();
-    expect(readFileSync(dragFile, 'utf8')).not.toContain('annotation');
+    expect(readDrag()).not.toContain('annotation');
     const outBefore = (await node(page, 'out').boundingBox())!;
 
     await drag(page, 'add', 40, 120);
 
     // The server writes the whole layout of Acc (it was auto-laid-out) to the file...
-    await expect.poll(() => readFileSync(dragFile, 'utf8')).toMatch(/annotation\(\n {2}add = \(/);
-    const text = readFileSync(dragFile, 'utf8');
+    await expect.poll(() => readDrag()).toMatch(/annotation\(\n {2}add = \(/);
+    const text = readDrag();
     for (const id of ['in', 'out', 'state']) expect(text).toContain(`  ${id} = (`);
     // ...and the other nodes stay where they were.
     expect((await node(page, 'out').boundingBox())!.x).toBeCloseTo(outBefore.x, 0);
@@ -200,10 +217,10 @@ test.describe.serial('moving nodes', () => {
 
     await drag(page, 'acc1', 150, 80);
 
-    await expect.poll(() => readFileSync(dragFile, 'utf8')).toContain('  acc1 = (');
+    await expect.poll(() => readDrag()).toContain('  acc1 = (');
     expect(await gap()).toBeCloseTo(gapBefore, 0);
     // Literals are not stored.
-    expect(readFileSync(dragFile, 'utf8')).not.toContain('literal');
+    expect(readDrag()).not.toContain('literal');
   });
 
   test('nodes stop at the top and left edge of the diagram', async ({ page }) => {
@@ -214,7 +231,7 @@ test.describe.serial('moving nodes', () => {
     const start = (await node(page, 'in').boundingBox())!;
     await drag(page, 'in', pane.x + 2 - (start.x + start.width / 2), pane.y + 2 - (start.y + start.height / 2));
 
-    await expect.poll(() => readFileSync(dragFile, 'utf8')).toContain('  in = (0, 0, ');
+    await expect.poll(() => readDrag()).toContain('  in = (0, 0, ');
     await expect(page.getByRole('alert')).toHaveCount(0);
 
     // The node sits in the corner of the shaded boundary.
@@ -230,8 +247,8 @@ test.describe.serial('moving nodes', () => {
     const start = (await node(page, 'acc2').boundingBox())!;
     await drag(page, 'acc2', pane.x + 2 - (start.x + start.width / 2), 0);
 
-    await expect.poll(() => readFileSync(dragFile, 'utf8')).toMatch(/ {2}acc2 = \(\d+, /);
-    const x = Number(/ {2}acc2 = \((\d+), /.exec(readFileSync(dragFile, 'utf8'))![1]);
+    await expect.poll(() => readDrag()).toMatch(/ {2}acc2 = \(\d+, /);
+    const x = Number(/ {2}acc2 = \((\d+), /.exec(readDrag())![1]);
     expect(x).toBeGreaterThan(0);
     // The literal touches the edge of the allowed area, not beyond it.
     const area = (await page.getByTestId('allowed-area').boundingBox())!;
@@ -244,7 +261,7 @@ test.describe.serial('moving nodes', () => {
     await goto(page, '/?file=Drag.dia&type=Main');
     const literal = node(page, '#literal:acc2.in:in');
     await expect(literal).toBeVisible();
-    const before = readFileSync(dragFile, 'utf8');
+    const before = readDrag();
     const offset = async () =>
       (await node(page, 'acc2').boundingBox())!.x - (await literal.boundingBox())!.x;
     const offsetBefore = await offset();
@@ -252,14 +269,14 @@ test.describe.serial('moving nodes', () => {
     await drag(page, '#literal:acc2.in:in', 100, 100);
     await page.waitForTimeout(300);
     expect(await offset()).toBeCloseTo(offsetBefore, 0);
-    expect(readFileSync(dragFile, 'utf8')).toBe(before);
+    expect(readDrag()).toBe(before);
   });
 
   // Connections (still Drag.dia, so these run after the moves).
 
   test('selecting a connection and pressing Delete removes its statement', async ({ page }) => {
     await goto(page, '/?file=Drag.dia&type=Acc');
-    expect(readFileSync(dragFile, 'utf8')).toContain('  connect(in, add.in1);\n');
+    expect(readDrag()).toContain('  connect(in, add.in1);\n');
     await expect(page.locator('.react-flow__edge')).toHaveCount(4);
 
     await edge(page, 'in.out->add.in:in1').click();
@@ -267,7 +284,7 @@ test.describe.serial('moving nodes', () => {
     await page.keyboard.press('Delete');
 
     await expect(page.locator('.react-flow__edge')).toHaveCount(3);
-    expect(readFileSync(dragFile, 'utf8')).not.toContain('connect(in, add.in1);');
+    expect(readDrag()).not.toContain('connect(in, add.in1);');
   });
 
   test('dragging from a handle to a free port connects them', async ({ page }) => {
@@ -291,12 +308,12 @@ test.describe.serial('moving nodes', () => {
 
     await expect(page.locator('.react-flow__edge')).toHaveCount(4);
     await expect(edge(page, 'in.out->add.in:in1')).toHaveCount(1);
-    expect(readFileSync(dragFile, 'utf8')).toContain('  connect(add.out, state);\n  connect(in, add.in1);\n}');
+    expect(readDrag()).toContain('  connect(add.out, state);\n  connect(in, add.in1);\n}');
   });
 
   test('a port that already has a connection cannot get another', async ({ page }) => {
     await goto(page, '/?file=Drag.dia&type=Acc');
-    const before = readFileSync(dragFile, 'utf8');
+    const before = readDrag();
     const start = (await handle(page, 'add', 'out:out').boundingBox())!;
     const end = (await handle(page, 'add', 'in:in2').boundingBox())!;
     await page.mouse.move(start.x + 3, start.y + 3);
@@ -305,17 +322,17 @@ test.describe.serial('moving nodes', () => {
     await page.mouse.up();
     await page.waitForTimeout(300);
     await expect(page.locator('.react-flow__edge')).toHaveCount(4);
-    expect(readFileSync(dragFile, 'utf8')).toBe(before);
+    expect(readDrag()).toBe(before);
     await expect(page.getByRole('alert')).toHaveCount(0);
   });
 
   test('selecting a literal and pressing Delete removes its connection', async ({ page }) => {
     await goto(page, '/?file=Drag.dia&type=Main');
-    expect(readFileSync(dragFile, 'utf8')).toContain('connect(1, acc1.in);');
+    expect(readDrag()).toContain('connect(1, acc1.in);');
     await node(page, '#literal:acc1.in:in').click();
     await page.keyboard.press('Delete');
     await expect(node(page, '#literal:acc1.in:in')).toHaveCount(0);
-    expect(readFileSync(dragFile, 'utf8')).not.toContain('connect(1, acc1.in);');
+    expect(readDrag()).not.toContain('connect(1, acc1.in);');
   });
 
   test('the × on a selected connection deletes it', async ({ page }) => {
@@ -332,7 +349,7 @@ test.describe.serial('moving nodes', () => {
     await button.click();
 
     await expect(edge(page, 'state.out->add.in:in2')).toHaveCount(0);
-    expect(readFileSync(dragFile, 'utf8')).not.toContain('connect(state, add.in2);');
+    expect(readDrag()).not.toContain('connect(state, add.in2);');
     await expect(button).toHaveCount(0);
   });
 
@@ -342,7 +359,7 @@ test.describe.serial('moving nodes', () => {
     await literal.click();
     await page.getByRole('button', { name: 'Delete literal', exact: true }).click();
     await expect(literal).toHaveCount(0);
-    expect(readFileSync(dragFile, 'utf8')).not.toContain('connect(2, acc2.in);');
+    expect(readDrag()).not.toContain('connect(2, acc2.in);');
   });
 
   // Undo/redo (still Drag.dia; the last test changes the file from outside).
@@ -354,26 +371,26 @@ test.describe.serial('moving nodes', () => {
     await expect(undo).toBeDisabled(); // a new tab has no history
     await expect(redo).toBeDisabled();
 
-    const before = readFileSync(dragFile, 'utf8');
+    const before = readDrag();
     await drag(page, 'add', 30, 40);
-    await expect.poll(() => readFileSync(dragFile, 'utf8')).not.toBe(before);
-    const moved = readFileSync(dragFile, 'utf8');
+    await expect.poll(() => readDrag()).not.toBe(before);
+    const moved = readDrag();
     await expect(undo).toBeEnabled();
 
     await undo.click();
-    await expect.poll(() => readFileSync(dragFile, 'utf8')).toBe(before);
+    await expect.poll(() => readDrag()).toBe(before);
     await expect(undo).toBeDisabled();
     await expect(redo).toBeEnabled();
 
     await redo.click();
-    await expect.poll(() => readFileSync(dragFile, 'utf8')).toBe(moved);
+    await expect.poll(() => readDrag()).toBe(moved);
     await expect(redo).toBeDisabled();
     await expect(undo).toBeEnabled();
   });
 
   test('undo and redo a deleted connection with the keyboard', async ({ page }) => {
     await goto(page, '/?file=Drag.dia&type=Acc');
-    const before = readFileSync(dragFile, 'utf8');
+    const before = readDrag();
     expect(before).toContain('connect(add.out, out);');
     // Click just before out's input: near add's output, the connections to
     // out and to state overlap.
@@ -385,7 +402,7 @@ test.describe.serial('moving nodes', () => {
 
     await page.keyboard.press('Control+z');
     await expect(edge(page, 'add.out:out->out.in')).toHaveCount(1);
-    expect(readFileSync(dragFile, 'utf8')).toBe(before);
+    expect(readDrag()).toBe(before);
 
     await page.keyboard.press('Control+Shift+z');
     await expect(edge(page, 'add.out:out->out.in')).toHaveCount(0);
@@ -393,21 +410,22 @@ test.describe.serial('moving nodes', () => {
     await expect(edge(page, 'add.out:out->out.in')).toHaveCount(1);
   });
 
-  test('undo is refused if the file was changed elsewhere', async ({ page }) => {
+  test('a change made elsewhere reloads the diagram and clears the undo history', async ({ page }) => {
     await goto(page, '/?file=Drag.dia&type=Acc');
-    const before = readFileSync(dragFile, 'utf8');
+    const before = readDrag();
     await drag(page, 'add', 20, 20);
-    await expect.poll(() => readFileSync(dragFile, 'utf8')).not.toBe(before);
+    await expect.poll(() => readDrag()).not.toBe(before);
+    await expect(page.getByTestId('undo')).toBeEnabled();
 
     // Someone edits the file in a text editor.
-    const external = readFileSync(dragFile, 'utf8') + '// edited elsewhere\n';
+    const external = readDrag() + '// edited elsewhere\n';
     writeFileSync(dragFile, external);
 
-    await page.getByTestId('undo').click();
-    await expect(page.getByRole('alert')).toContainText('has been changed since');
-    await expect(page.getByRole('alert')).toContainText('undo history of Drag.dia has been cleared');
+    // The diagram is reloaded, and the history (which no longer matches) is gone.
+    // (Clicking Undo before the reload arrives is refused by the server: see WebServerTest.)
+    await expect(page.getByTestId('notice')).toContainText('has been reloaded');
     await expect(page.getByTestId('undo')).toBeDisabled();
-    expect(readFileSync(dragFile, 'utf8')).toBe(external);
+    expect(readDrag()).toBe(external);
   });
 
   // Blocks (still Drag.dia).
@@ -421,13 +439,13 @@ test.describe.serial('moving nodes', () => {
 
     await expect(node(page, 'Add_1')).toBeVisible();
     await expect(node(page, 'Add_1')).toHaveText('Add'); // simple name: shows the type
-    expect(readFileSync(dragFile, 'utf8')).toContain('  add: Add;\n  Add_1;\n');
-    expect(readFileSync(dragFile, 'utf8')).toMatch(/ {2}Add_1 = \(\d+, \d+, 60, 30\)/);
+    expect(readDrag()).toContain('  add: Add;\n  Add_1;\n');
+    expect(readDrag()).toMatch(/ {2}Add_1 = \(\d+, \d+, 60, 30\)/);
 
     await node(page, 'Add_1').click();
     await page.getByRole('button', { name: 'Delete block', exact: true }).click();
     await expect(node(page, 'Add_1')).toHaveCount(0);
-    expect(readFileSync(dragFile, 'utf8')).not.toContain('Add_1');
+    expect(readDrag()).not.toContain('Add_1');
 
     await page.keyboard.press('Control+z');
     await expect(node(page, 'Add_1')).toBeVisible();
@@ -435,18 +453,18 @@ test.describe.serial('moving nodes', () => {
 
   test('Delete removes a block with its connections, and undo brings them back', async ({ page }) => {
     await goto(page, '/?file=Drag.dia&type=Acc');
-    const before = readFileSync(dragFile, 'utf8');
+    const before = readDrag();
     await node(page, 'add').click();
     await page.keyboard.press('Delete');
 
     await expect(node(page, 'add')).toHaveCount(0);
-    const text = readFileSync(dragFile, 'utf8');
+    const text = readDrag();
     expect(text).not.toContain('add: Add;');
     expect(text).not.toContain('add.');
 
     await page.keyboard.press('Control+z');
     await expect(node(page, 'add')).toBeVisible();
-    expect(readFileSync(dragFile, 'utf8')).toBe(before);
+    expect(readDrag()).toBe(before);
   });
 
   // Literals, variables and parameters (still Drag.dia; earlier tests deleted
@@ -472,7 +490,7 @@ test.describe.serial('moving nodes', () => {
 
     await expect(form).toHaveCount(0);
     await expect(node(page, '#literal:acc2.in:in')).toHaveText('7');
-    expect(readFileSync(dragFile, 'utf8')).toContain('connect(7, acc2.in);');
+    expect(readDrag()).toContain('connect(7, acc2.in);');
   });
 
   test('dropping a variable opens a form for its kind, name and type', async ({ page }) => {
@@ -482,13 +500,13 @@ test.describe.serial('moving nodes', () => {
     await expect(form.getByLabel('Name')).toHaveValue('v'); // a suggestion
 
     // A name that is taken is refused; Escape cancels without changing anything.
-    const before = readFileSync(dragFile, 'utf8');
+    const before = readDrag();
     await form.getByLabel('Name').fill('state');
     await form.getByLabel('Name').press('Enter');
     await expect(form.getByRole('alert')).toContainText('already used');
     await form.getByLabel('Name').press('Escape');
     await expect(form).toHaveCount(0);
-    expect(readFileSync(dragFile, 'utf8')).toBe(before);
+    expect(readDrag()).toBe(before);
 
     await page.getByTestId('tool-variable').dragTo(page.locator('.react-flow__pane'), { targetPosition: { x: 450, y: 320 } });
     await form.getByLabel('Kind').selectOption('input');
@@ -497,7 +515,7 @@ test.describe.serial('moving nodes', () => {
     await form.getByRole('button', { name: 'Add' }).click();
 
     await expect(node(page, 'level')).toHaveText('input level');
-    expect(readFileSync(dragFile, 'utf8')).toContain('  var state: Int;\n  input level: Real;\n');
+    expect(readDrag()).toContain('  var state: Int;\n  input level: Real;\n');
   });
 
   test('an input parameter is added to the header, and can be deleted and undeleted', async ({ page }) => {
@@ -509,16 +527,16 @@ test.describe.serial('moving nodes', () => {
     await form.getByLabel('Name').press('Enter');
 
     await expect(node(page, 'reset').locator('.parameter')).toHaveClass(/parameter--in/);
-    expect(readFileSync(dragFile, 'utf8')).toContain('diagramtype Acc(in: Int, reset: Bool => out: Int) {');
+    expect(readDrag()).toContain('diagramtype Acc(in: Int, reset: Bool => out: Int) {');
 
     await node(page, 'reset').click();
     await page.getByRole('button', { name: 'Delete parameter', exact: true }).click();
     await expect(node(page, 'reset')).toHaveCount(0);
-    expect(readFileSync(dragFile, 'utf8')).toContain('diagramtype Acc(in: Int => out: Int) {');
+    expect(readDrag()).toContain('diagramtype Acc(in: Int => out: Int) {');
 
     await page.keyboard.press('Control+z');
     await expect(node(page, 'reset')).toBeVisible();
-    expect(readFileSync(dragFile, 'utf8')).toContain('diagramtype Acc(in: Int, reset: Bool => out: Int) {');
+    expect(readDrag()).toContain('diagramtype Acc(in: Int, reset: Bool => out: Int) {');
   });
 
   // Rename, the right-click menu and auto layout (still Drag.dia).
@@ -538,7 +556,7 @@ test.describe.serial('moving nodes', () => {
     await prompt.getByLabel('Name').press('Enter');
     await expect(prompt).toHaveCount(0);
     await expect(node(page, 'sum')).toHaveText('sum');
-    const text = readFileSync(dragFile, 'utf8');
+    const text = readDrag();
     expect(text).toContain('  sum: Add;');
     expect(text).toContain('connect(in, sum.in1);');
     expect(text).toContain('  sum = (');
@@ -553,7 +571,7 @@ test.describe.serial('moving nodes', () => {
     await page.getByTestId('prompt-form').getByLabel('Name').fill('height');
     await page.getByTestId('prompt-form').getByLabel('Name').press('Enter');
     await expect(node(page, 'height')).toHaveText('input height');
-    expect(readFileSync(dragFile, 'utf8')).toContain('  input height: Real;');
+    expect(readDrag()).toContain('  input height: Real;');
   });
 
   test('F2 renames the selected node', async ({ page }) => {
@@ -574,7 +592,7 @@ test.describe.serial('moving nodes', () => {
     await value.fill('9');
     await value.press('Enter');
     await expect(node(page, '#literal:acc2.in:in')).toHaveText('9');
-    expect(readFileSync(dragFile, 'utf8')).toContain('connect(9, acc2.in);');
+    expect(readDrag()).toContain('connect(9, acc2.in);');
   });
 
   test("Open shows a block's type", async ({ page }) => {
@@ -587,13 +605,13 @@ test.describe.serial('moving nodes', () => {
 
   test('Auto layout lays out the type again, and can be undone', async ({ page }) => {
     await goto(page, '/?file=Drag.dia&type=Acc');
-    const before = readFileSync(dragFile, 'utf8');
+    const before = readDrag();
     const pane = (await page.locator('.react-flow__pane').boundingBox())!;
     await page.mouse.click(pane.x + pane.width - 40, pane.y + pane.height - 40, { button: 'right' });
     await page.getByRole('menuitem', { name: 'Auto layout' }).click();
-    await expect.poll(() => readFileSync(dragFile, 'utf8')).not.toBe(before);
+    await expect.poll(() => readDrag()).not.toBe(before);
     await page.keyboard.press('Control+z');
-    await expect.poll(() => readFileSync(dragFile, 'utf8')).toBe(before);
+    await expect.poll(() => readDrag()).toBe(before);
   });
 
   // New diagram types and external functions (still Drag.dia).
@@ -616,11 +634,11 @@ test.describe.serial('moving nodes', () => {
     await expect(page).toHaveURL(/type=Counter/);
     await expect(page.locator('.react-flow__node')).toHaveCount(0);
     await expect(page.getByTestId('palette-Acc')).toBeVisible(); // its blocks can be added
-    expect(readFileSync(dragFile, 'utf8')).toMatch(/\ndiagramtype Counter \{\n\}\n$/);
+    expect(readDrag()).toMatch(/\ndiagramtype Counter \{\n\}\n$/);
 
     await page.keyboard.press('Control+z');
     await expect(page.getByTestId('type-select').locator('option', { hasText: 'Counter' })).toHaveCount(0);
-    expect(readFileSync(dragFile, 'utf8')).not.toContain('Counter');
+    expect(readDrag()).not.toContain('Counter');
   });
 
   test('New ▸ External function adds a function with parameters; the view stays', async ({ page }) => {
@@ -641,7 +659,7 @@ test.describe.serial('moving nodes', () => {
     await expect(form).toHaveCount(0);
     await expect(page.getByTestId('type-select')).toHaveValue('Main');
     await expect(page.getByTestId('palette-Log')).toContainText('external');
-    expect(readFileSync(dragFile, 'utf8')).toContain('external Print(in: Int);\nexternal Log(in1: Int, level: Real => ok: Bool);\n');
+    expect(readDrag()).toContain('external Print(in: Int);\nexternal Log(in1: Int, level: Real => ok: Bool);\n');
   });
 
   // Type management (still Drag.dia).
@@ -662,12 +680,12 @@ test.describe.serial('moving nodes', () => {
 
     await expect(page.getByTestId('type-select')).toHaveValue('Accumulator');
     await expect(page).toHaveURL(/type=Accumulator/);
-    const text = readFileSync(dragFile, 'utf8');
+    const text = readDrag();
     expect(text).toContain('diagramtype Accumulator(');
     expect(text).toContain('acc1: Accumulator;');
 
     await page.keyboard.press('Control+z');
-    await expect.poll(() => readFileSync(dragFile, 'utf8')).toContain('acc1: Acc;');
+    await expect.poll(() => readDrag()).toContain('acc1: Acc;');
   });
 
   test('a new subtype from the palette; its super types can be changed', async ({ page }) => {
@@ -680,7 +698,7 @@ test.describe.serial('moving nodes', () => {
 
     await expect(page.getByTestId('type-select')).toHaveValue('Acc2');
     await expect(node(page, 'Acc::sum')).toBeVisible(); // inherited
-    expect(readFileSync(dragFile, 'utf8')).toContain('diagramtype Acc2 extends Acc {\n}\n');
+    expect(readDrag()).toContain('diagramtype Acc2 extends Acc {\n}\n');
 
     await paneMenu(page);
     await page.getByRole('menuitem', { name: 'Super types…' }).click();
@@ -690,7 +708,7 @@ test.describe.serial('moving nodes', () => {
     await form.getByRole('button', { name: 'Apply' }).click();
     await expect(form).toHaveCount(0);
     await expect(page.locator('.react-flow__node')).toHaveCount(0);
-    expect(readFileSync(dragFile, 'utf8')).toContain('diagramtype Acc2 {\n}\n');
+    expect(readDrag()).toContain('diagramtype Acc2 {\n}\n');
   });
 
   test('types in use cannot be deleted; deleting the shown type shows another', async ({ page }) => {
@@ -703,7 +721,34 @@ test.describe.serial('moving nodes', () => {
     await page.getByRole('menuitem', { name: 'Delete Acc2' }).click();
     await expect(page.getByTestId('type-select')).toHaveValue('Main');
     await expect(page.getByTestId('type-select').locator('option', { hasText: 'Acc2' })).toHaveCount(0);
-    expect(readFileSync(dragFile, 'utf8')).not.toContain('Acc2');
+    expect(readDrag()).not.toContain('Acc2');
+  });
+
+  // Changes on disk (still Drag.dia).
+
+  test('an edit in one tab shows up in another tab', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Acc');
+    const other = await page.context().newPage();
+    await goto(other, '/?file=Drag.dia&type=Acc');
+    const before = (await node(other, 'sum').boundingBox())!;
+
+    await drag(page, 'sum', 0, 60);
+
+    await expect.poll(async () => (await node(other, 'sum').boundingBox())!.y).toBeGreaterThan(before.y + 20);
+    await expect(other.getByTestId('notice')).toContainText('Drag.dia was changed outside this tab');
+    await expect(page.getByTestId('notice')).toHaveCount(0); // its own edit is not echoed
+    await other.close();
+  });
+
+  test('a change made in a text editor shows up without reloading', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Acc');
+    await expect(node(page, 'state')).toBeVisible();
+    writeFileSync(dragFile, readDrag().replace(/\bstate\b/g, 'total'));
+
+    await expect(node(page, 'total')).toHaveText('var total');
+    await expect(node(page, 'state')).toHaveCount(0);
+    await expect(page.getByTestId('notice')).toContainText('has been reloaded');
+    await expect(page.getByTestId('undo')).toBeDisabled();
   });
 });
 

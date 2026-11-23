@@ -33,6 +33,8 @@ export interface Server {
   diagram: DiagramMessage | null;
   /** A message for the error banner, or null. */
   error: string | null;
+  /** A short-lived message for the info banner (e.g. the file was reloaded), or null. */
+  notice: string | null;
   setError: (error: string | null) => void;
   send: (message: ClientMessage, kind?: RequestKind) => void;
   open: (file: string, diagramType?: string) => void;
@@ -54,6 +56,13 @@ export function useServer(onFormAnswered: (error: string | null) => void): Serve
   const [files, setFiles] = useState<string[]>([]);
   const [diagram, setDiagram] = useState<DiagramMessage | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const noticeTimer = useRef<number | undefined>(undefined);
+  const showNotice = useCallback((message: string, ms: number) => {
+    window.clearTimeout(noticeTimer.current);
+    setNotice(message);
+    noticeTimer.current = window.setTimeout(() => setNotice(null), ms);
+  }, []);
 
   const history = useRef(new UndoHistory());
   const [, historyChanged] = useReducer((n: number) => n + 1, 0);
@@ -150,6 +159,22 @@ export function useServer(onFormAnswered: (error: string | null) => void): Serve
             updateUrl(message.file, message.diagramType);
             break;
           }
+          // Pushed by the server, not answers: they leave the request queue alone.
+          case 'update': {
+            // The shown file changed on disk; the history no longer matches it.
+            history.current.clear(message.file);
+            historyChanged();
+            setDiagram({ ...message, type: 'diagram' });
+            updateUrl(message.file, message.diagramType);
+            showNotice(`${message.file} was changed outside this tab, so it has been reloaded.`, 5000);
+            break;
+          }
+          case 'files':
+            setFiles(message.files);
+            break;
+          case 'notice':
+            showNotice(message.message, 15000);
+            break;
           case 'error': {
             const request = answered();
             if (request && (request.kind === 'undo' || request.kind === 'redo')) {
@@ -185,7 +210,7 @@ export function useServer(onFormAnswered: (error: string | null) => void): Serve
       window.removeEventListener('online', reconnectNow);
       ws?.close();
     };
-  }, [sendRaw, answered]);
+  }, [sendRaw, answered, showNotice]);
 
   // Undo/redo of edits in the shown file (see history.ts). Not while a request
   // is on its way: its answer may change the history.
@@ -210,5 +235,5 @@ export function useServer(onFormAnswered: (error: string | null) => void): Serve
     );
   }, [canRedo, diagram, send]);
 
-  return { status, files, diagram, error, setError, send, open, pendingCount, canUndo, canRedo, undo, redo };
+  return { status, files, diagram, error, notice, setError, send, open, pendingCount, canUndo, canRedo, undo, redo };
 }

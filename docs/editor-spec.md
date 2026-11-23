@@ -769,6 +769,10 @@ file.
    never overwrite edits made elsewhere. The history ends with the tab.
 10. **Concurrency.** Single user per file, or several clients on one model?
     Should the server watch for external text edits and reload?
+    *Answered:* the file stays the only model. The server watches the
+    workspace and pushes the new diagram to every tab showing a changed file
+    (other tabs, text editors, git); undo history of that file is cleared, and
+    undo/redo never overwrite such changes.
 11. **Types in dialogs.** Parameters and variables are limited to `Int`, `Bool`
     and `Real` today. Should `String` and structs be added?
 12. **Files with errors.** The old editor cannot open

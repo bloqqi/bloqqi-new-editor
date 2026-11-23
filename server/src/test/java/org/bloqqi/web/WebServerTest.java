@@ -60,6 +60,12 @@ public class WebServerTest {
 			clients.add(this);
 		}
 
+		/** The next message within {@code millis}, or null. */
+		JsonObject poll(long millis) throws InterruptedException {
+			String text = messages.poll(millis, TimeUnit.MILLISECONDS);
+			return text == null ? null : new JsonParser().parse(text).getAsJsonObject();
+		}
+
 		JsonObject next() throws InterruptedException {
 			String text = messages.poll(20, TimeUnit.SECONDS);
 			assertNotNull("message received", text);
@@ -227,6 +233,96 @@ public class WebServerTest {
 		assertEquals(external.toString(), "Counter", external.get("diagramType").getAsString());
 		assertTrue(external.get("palette").toString().contains("\"name\":\"Log\""));
 		assertTrue(Files.readString(dir.resolve("TwoCounters.dia")).contains("external Log(x: Int);"));
+	}
+
+	/** A server on a temporary copy of TwoCounters.dia. */
+	private Path watchedWorkspace() throws Exception {
+		Path dir = temp.newFolder("watched").toPath();
+		Files.copy(Examples.dir().resolve("TwoCounters.dia"), dir.resolve("TwoCounters.dia"));
+		stop();
+		clients.clear();
+		server = new WebServer(0, new Workspace(dir), null);
+		server.start();
+		return dir;
+	}
+
+	private Client openAcc() throws Exception {
+		Client c = new Client();
+		c.next(); // workspace
+		c.open("TwoCounters.dia", "Acc");
+		assertEquals("diagram", c.next().get("type").getAsString());
+		return c;
+	}
+
+	private static int x(JsonObject diagram, String id) {
+		for (var n : diagram.getAsJsonArray("nodes")) {
+			if (n.getAsJsonObject().get("id").getAsString().equals(id)) {
+				return n.getAsJsonObject().get("x").getAsInt();
+			}
+		}
+		throw new AssertionError("no node " + id);
+	}
+
+	@Test
+	public void anEditInOneTabUpdatesTheOthersButIsNotEchoed() throws Exception {
+		watchedWorkspace();
+		Client a = openAcc();
+		Client b = openAcc();
+
+		a.socket.sendText("{\"type\":\"move\",\"file\":\"TwoCounters.dia\",\"diagramType\":\"Acc\","
+				+ "\"nodes\":[{\"id\":\"add\",\"x\":321,\"y\":45}]}", true);
+		assertEquals("diagram", a.next().get("type").getAsString());
+
+		JsonObject update = b.next();
+		assertEquals(update.toString(), "update", update.get("type").getAsString());
+		assertEquals(321, x(update, "add"));
+		assertEquals("Acc", update.get("diagramType").getAsString());
+
+		assertEquals("no echo to the tab that made the edit", null, a.poll(500));
+	}
+
+	@Test
+	public void changesMadeOutsideTheEditorArePushed() throws Exception {
+		Path dir = watchedWorkspace();
+		Client c = openAcc();
+		Path file = dir.resolve("TwoCounters.dia");
+
+		// A text editor renames the variable.
+		Files.writeString(file, Files.readString(file).replace("state", "total"));
+		JsonObject update = c.next();
+		assertEquals("update", update.get("type").getAsString());
+		assertTrue(update.get("nodes").toString().contains("\"var total\""));
+
+		// ... and then breaks the file: the update says it is read-only now.
+		Files.writeString(file, Files.readString(file).replace("add: Add;", "add: Add"));
+		update = c.next();
+		assertEquals("update", update.get("type").getAsString());
+		assertTrue(update.get("readOnly").getAsString().contains("syntax errors"));
+	}
+
+	@Test
+	public void newAndDeletedFilesArePushed() throws Exception {
+		Path dir = watchedWorkspace();
+		Client c = openAcc();
+
+		Files.writeString(dir.resolve("New.dia"), "diagramtype N {\n}\n");
+		JsonObject files = c.next();
+		assertEquals("files", files.get("type").getAsString());
+		assertTrue(files.get("files").toString().contains("New.dia"));
+
+		Files.delete(dir.resolve("TwoCounters.dia"));
+		boolean notice = false;
+		boolean listed = false;
+		for (JsonObject m = c.next(); m != null; m = c.poll(500)) {
+			String type = m.get("type").getAsString();
+			if (type.equals("notice")) {
+				notice = m.get("message").getAsString().contains("TwoCounters.dia has been deleted");
+			} else if (type.equals("files")) {
+				listed = !m.get("files").toString().contains("TwoCounters.dia");
+			}
+		}
+		assertTrue("notice", notice);
+		assertTrue("new file list", listed);
 	}
 
 	private static String restore(String diagramType, String text, String expected) {
