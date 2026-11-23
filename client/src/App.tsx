@@ -1,381 +1,49 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import {
-  applyEdgeChanges,
-  applyNodeChanges,
-  MarkerType,
-  type Connection,
-  type EdgeChange,
-  type NodeChange,
-  type OnConnect,
-  type OnNodeDrag,
-} from '@xyflow/react';
-import { Canvas, type Extent } from './Canvas';
-import { canConnect } from './connections';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { Canvas } from './Canvas';
+import { Dialogs } from './Dialogs';
 import { EditingContext, type Editing } from './editing';
-import { UndoHistory } from './history';
-import { AddForm, type FormRequest, type FormValues } from './AddForm';
-import { ContextMenu, type MenuItem } from './ContextMenu';
-import { ExternalFunctionForm } from './ExternalFunctionForm';
-import { PromptForm, type PromptRequest } from './PromptForm';
-import { Palette, type Tool } from './Palette';
-import { type FlowEdgeType } from './FlowEdge';
-import { type DiagramFlowNode } from './nodes';
-import {
-  webSocketUrl,
-  type ClientMessage,
-  type ParameterSpec,
-  type DiagramEdge,
-  type DiagramMessage,
-  type ServerMessage,
-} from './protocol';
-
-/** Arrow head colours (ConnectionPart.refreshVisuals); must match .flow* in styles.css. */
-const COLOR_LOCAL = '#1f4fd1';
-const COLOR_INHERITED = '#333333';
-const COLOR_ERROR = '#d92d20';
-
-function arrowColor(e: DiagramEdge): string {
-  // The arrow sits on the second half of an interception's "second" connection,
-  // which stands for the inherited connection.
-  if (e.inherited || e.intercept === 'second') return COLOR_INHERITED;
-  return e.error ? COLOR_ERROR : COLOR_LOCAL;
-}
-
-type Status = 'connecting' | 'open' | 'reconnecting';
+import type { FlowEdgeType } from './FlowEdge';
+import { edgeMenu, newMenu, nodeMenu, paneMenu, type MenuContext } from './menus';
+import type { DiagramFlowNode } from './nodes';
+import { Palette } from './Palette';
+import { useRenameKey, useUndoRedoKeys } from './shortcuts';
+import { Toolbar } from './Toolbar';
+import { useDiagramFlow } from './useDiagramFlow';
+import { useDialogs } from './useDialogs';
+import { useServer } from './useServer';
 
 /**
- * What a request was for. The server answers requests in order, so a queue of
- * these tells what each answer ("diagram" or "error") belongs to.
+ * The editor: the toolbar, the palette, the canvas with its menus and forms,
+ * and the problems of the file. The parts:
+ * - useServer: the WebSocket, the shown diagram, undo/redo
+ * - useDiagramFlow: the canvas' nodes and edges, and edits made on it directly
+ * - useDialogs (rendered by Dialogs): the menu and the forms
+ * - menus: what the menus offer
  */
-type RequestKind = 'open' | 'edit' | 'form' | 'undo' | 'redo';
-
-const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
-const UNDO_KEYS = IS_MAC ? '⌘Z' : 'Ctrl+Z';
-const REDO_KEYS = IS_MAC ? '⇧⌘Z' : 'Ctrl+Shift+Z';
-
-/** Delay before reconnecting after the connection drops: doubles up to the maximum. */
-const RECONNECT_MIN_MS = 500;
-const RECONNECT_MAX_MS = 10_000;
-
-const UNBOUNDED: Extent = [
-  [-Infinity, -Infinity],
-  [Infinity, Infinity],
-];
-
-/** Literal id -> id of the node it feeds. */
-function literalTargets(diagram: DiagramMessage | null): Map<string, string> {
-  const literals = new Set((diagram?.nodes ?? []).filter((n) => n.kind === 'literal').map((n) => n.id));
-  return new Map((diagram?.edges ?? []).filter((e) => literals.has(e.source)).map((e) => [e.source, e.target]));
-}
-
-/**
- * How far from the left edge each node fed by literals must stay, so that its
- * literals (drawn left of it) stay inside the area where things can be placed.
- * React Flow 12.3 only honours a node's own extent while dragging if the node
- * has a parent, so this is applied to position changes here (clampToEdge).
- */
-function literalClearance(diagram: DiagramMessage | null): Map<string, number> {
-  const byId = new Map((diagram?.nodes ?? []).map((n) => [n.id, n]));
-  const minX = new Map<string, number>();
-  for (const [literal, target] of literalTargets(diagram)) {
-    const l = byId.get(literal);
-    const t = byId.get(target);
-    if (l && t) minX.set(target, Math.max(minX.get(target) ?? 0, t.x - l.x));
-  }
-  return minX;
-}
-
-function clampToEdge(changes: NodeChange<DiagramFlowNode>[], minX: Map<string, number>): NodeChange<DiagramFlowNode>[] {
-  return changes.map((c) =>
-    c.type === 'position' && c.position && (minX.get(c.id) ?? 0) > c.position.x
-      ? { ...c, position: { ...c.position, x: minX.get(c.id)! } }
-      : c,
-  );
-}
-
-/**
- * React Flow nodes for a diagram. Literals can't be dragged (they follow their
- * target), nor can anything in a read-only diagram; otherwise the canvas-wide
- * nodesDraggable setting applies. Literals get an unbounded extent: they may
- * lie left of the origin in a file, and must not be pushed onto their block.
- */
-function toFlowNodes(diagram: DiagramMessage | null): DiagramFlowNode[] {
-  return (diagram?.nodes ?? []).map((n) => {
-    const literal = n.kind === 'literal';
-    return {
-      id: n.id,
-      type: n.kind,
-      position: { x: n.x, y: n.y },
-      width: n.width,
-      height: n.height,
-      // Literals are selectable so that Delete removes their connection.
-      draggable: literal || diagram?.readOnly ? false : undefined,
-      ...(literal ? { extent: UNBOUNDED } : {}),
-      data: { ...n },
-    };
-  });
-}
-
-/**
- * While nodes are dragged, moves each literal along with the node it feeds, so
- * it stays next to its port until the server sends the new layout.
- */
-function moveLiterals(nodes: DiagramFlowNode[], literalTargets: Map<string, string>): DiagramFlowNode[] {
-  if (literalTargets.size === 0) return nodes;
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  return nodes.map((n) => {
-    const target = byId.get(literalTargets.get(n.id) ?? '');
-    if (!target) return n;
-    const x = target.position.x + (n.data.x - target.data.x);
-    const y = target.position.y + (n.data.y - target.data.y);
-    return x === n.position.x && y === n.position.y ? n : { ...n, position: { x, y } };
-  });
-}
-
-/** React Flow edges for a diagram; only connections that can be deleted here are selectable. */
-function toFlowEdges(diagram: DiagramMessage | null): FlowEdgeType[] {
-  return (diagram?.edges ?? []).map((e) => ({
-    id: e.id,
-    type: 'flow',
-    selectable: e.deletable && !diagram?.readOnly,
-    source: e.source,
-    sourceHandle: e.sourceHandle,
-    target: e.target,
-    targetHandle: e.targetHandle,
-    markerEnd: e.fromLiteral
-      ? undefined
-      : { type: MarkerType.Arrow, color: arrowColor(e), width: 14, height: 14, strokeWidth: 1.5 },
-    data: { ...e },
-  }));
-}
-
-/** `base` (or `base2`, `base3`, ...) if no node of the diagram has that name. */
-function unusedName(base: string, diagram: DiagramMessage | null): string {
-  if (!base) return '';
-  const used = new Set((diagram?.nodes ?? []).map((n) => n.id.split('::').pop()!));
-  if (!used.has(base)) return base;
-  for (let i = 2; ; i++) {
-    if (!used.has(`${base}${i}`)) return `${base}${i}`;
-  }
-}
-
-/** Keeps ?file=…&type=… in the address bar so a view can be reloaded or linked. */
-function updateUrl(file: string, diagramType: string | null) {
-  const params = new URLSearchParams();
-  params.set('file', file);
-  if (diagramType) params.set('type', diagramType);
-  window.history.replaceState(null, '', `?${params}`);
-}
-
 export function App() {
-  const socket = useRef<WebSocket | null>(null);
-  const [status, setStatus] = useState<Status>('connecting');
-  const [files, setFiles] = useState<string[]>([]);
-  const [diagram, setDiagram] = useState<DiagramMessage | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  // The form opened by dropping a tool (literal, variable, parameter), and the
-  // server's reason if its last submission was refused.
-  const [form, setForm] = useState<FormRequest | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [draggingLiteral, setDraggingLiteral] = useState(false);
-  // The one-field form for Rename… and Change value… (shares formError).
-  const [prompt, setPrompt] = useState<PromptRequest | null>(null);
-  // The form for a new external function (where it opens), or null.
-  const [externalForm, setExternalForm] = useState<{ x: number; y: number } | null>(null);
-  // The right-click menu.
-  const [menu, setMenu] = useState<{ screen: { x: number; y: number }; items: MenuItem[] } | null>(null);
+  // The server tells the open form whether its submission was accepted; the
+  // dialogs are created after the server (they need its send), hence the ref.
+  const formAnswered = useRef<(error: string | null) => void>(() => {});
+  const server = useServer(useCallback((error: string | null) => formAnswered.current(error), []));
+  const { diagram, status, send, open } = server;
+  const flow = useDiagramFlow(diagram, send);
 
-  const history = useRef(new UndoHistory());
-  const [, historyChanged] = useReducer((n: number) => n + 1, 0);
-  const pending = useRef<{ kind: RequestKind; file: string }[]>([]);
-  const [pendingCount, setPendingCount] = useState(0);
+  /** The shown diagram can be edited. */
+  const editable = status === 'open' && !!diagram?.diagramType && !diagram.readOnly;
+  /** The file can get new types: connected, and the file has no syntax errors. */
+  const fileEditable = status === 'open' && !!diagram && !diagram.readOnly;
 
-  const sendRaw = useCallback((ws: WebSocket, message: ClientMessage, kind: RequestKind) => {
-    pending.current.push({ kind, file: message.file });
-    setPendingCount(pending.current.length);
-    ws.send(JSON.stringify(message));
-  }, []);
+  const dialogs = useDialogs({
+    diagram,
+    editable,
+    send,
+    literalConnections: flow.literalConnections,
+    setError: server.setError,
+  });
+  formAnswered.current = dialogs.formAnswered;
 
-  const send = useCallback(
-    (message: ClientMessage, kind: RequestKind = message.type === 'open' ? 'open' : 'edit') => {
-      if (socket.current) sendRaw(socket.current, message, kind);
-    },
-    [sendRaw],
-  );
-
-  /** The request that the next answer from the server belongs to. */
-  const answered = useCallback(() => {
-    const request = pending.current.shift();
-    setPendingCount(pending.current.length);
-    return request;
-  }, []);
-
-  const open = useCallback(
-    (file: string, diagramType?: string) => send({ type: 'open', file, diagramType }),
-    [send],
-  );
-
-  // One WebSocket at a time. If it closes (server restart, network change,
-  // laptop sleep), reconnect with backoff; the "workspace" message on the new
-  // connection reopens the diagram named in the URL, freshly loaded from disk.
-  useEffect(() => {
-    let ws: WebSocket | null = null;
-    let stopped = false;
-    let retryTimer: number | undefined;
-    let delay = RECONNECT_MIN_MS;
-
-    const reconnectNow = () => {
-      if (!stopped && ws === null) {
-        window.clearTimeout(retryTimer);
-        connect();
-      }
-    };
-
-    function connect() {
-      const current = new WebSocket(webSocketUrl());
-      ws = current;
-      socket.current = current;
-      // Requests sent on an earlier connection will not be answered.
-      pending.current = [];
-      setPendingCount(0);
-      current.onopen = () => {
-        delay = RECONNECT_MIN_MS;
-        setStatus('open');
-      };
-      current.onclose = () => {
-        if (ws !== current) return;
-        ws = null;
-        socket.current = null;
-        if (stopped) return;
-        setStatus('reconnecting');
-        retryTimer = window.setTimeout(connect, delay);
-        delay = Math.min(delay * 2, RECONNECT_MAX_MS);
-      };
-      current.onmessage = (event) => {
-        const message = JSON.parse(event.data as string) as ServerMessage;
-        switch (message.type) {
-          case 'workspace': {
-            setFiles(message.files);
-            const params = new URLSearchParams(window.location.search);
-            const file = params.get('file') ?? message.files[0];
-            if (file) {
-              sendRaw(current, { type: 'open', file, diagramType: params.get('type') ?? undefined }, 'open');
-            }
-            break;
-          }
-          case 'diagram': {
-            const request = answered();
-            if (message.change && request) {
-              const h = history.current;
-              if (request.kind === 'undo') h.undone(message.file);
-              else if (request.kind === 'redo') h.redone(message.file);
-              else h.record(message.file, { diagramType: message.diagramType, ...message.change });
-              historyChanged();
-            }
-            if (request?.kind === 'form') {
-              setForm(null);
-              setPrompt(null);
-              setExternalForm(null);
-              setFormError(null);
-            }
-            setDiagram(message);
-            setError(null);
-            updateUrl(message.file, message.diagramType);
-            break;
-          }
-          case 'error': {
-            const request = answered();
-            if (request && (request.kind === 'undo' || request.kind === 'redo')) {
-              // The file no longer is what the history expects (changed elsewhere).
-              history.current.clear(request.file);
-              historyChanged();
-              setError(`${message.message}. The undo history of ${request.file} has been cleared.`);
-            } else if (request?.kind === 'form') {
-              setFormError(message.message); // shown in the form, which stays open
-            } else {
-              setError(message.message);
-            }
-            // A refused edit: put the nodes back where the file has them.
-            setDiagram((d) => (d ? { ...d } : d));
-            break;
-          }
-        }
-      };
-    }
-
-    connect();
-    // Don't wait for the backoff when the user comes back to the tab.
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') reconnectNow();
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('online', reconnectNow);
-    return () => {
-      stopped = true;
-      pending.current = [];
-      window.clearTimeout(retryTimer);
-      document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('online', reconnectNow);
-      ws?.close();
-    };
-  }, [sendRaw, answered]);
-
-  // Undo/redo of edits in the shown file (see history.ts). Not while a request
-  // is on its way: its answer may change the history.
-  const canUndo = status === 'open' && pendingCount === 0 && !!diagram && !!history.current.nextUndo(diagram.file);
-  const canRedo = status === 'open' && pendingCount === 0 && !!diagram && !!history.current.nextRedo(diagram.file);
-
-  const undo = useCallback(() => {
-    const entry = diagram && history.current.nextUndo(diagram.file);
-    if (!canUndo || !diagram || !entry) return;
-    send(
-      { type: 'restore', file: diagram.file, diagramType: entry.diagramType, text: entry.before, expected: entry.after },
-      'undo',
-    );
-  }, [canUndo, diagram, send]);
-
-  const redo = useCallback(() => {
-    const entry = diagram && history.current.nextRedo(diagram.file);
-    if (!canRedo || !diagram || !entry) return;
-    send(
-      { type: 'restore', file: diagram.file, diagramType: entry.diagramType, text: entry.after, expected: entry.before },
-      'redo',
-    );
-  }, [canRedo, diagram, send]);
-
-  // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y (⌘ on a Mac), except while typing in a field.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (!(IS_MAC ? e.metaKey : e.ctrlKey) || e.altKey) return;
-      const t = e.target as HTMLElement | null;
-      if (t && (t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
-      const key = e.key.toLowerCase();
-      if (key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        undo();
-      } else if ((key === 'z' && e.shiftKey) || (key === 'y' && !IS_MAC)) {
-        e.preventDefault();
-        redo();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo]);
-
-  // Nodes are controlled here so they can be dragged; every diagram from the
-  // server (including the answer to a move) replaces them.
-  const [nodes, setNodes] = useState<DiagramFlowNode[]>([]);
-  const shown = useRef<string | null>(null);
-  useEffect(() => {
-    const key = diagram ? `${diagram.file}/${diagram.diagramType}` : null;
-    const sameDiagram = key === shown.current;
-    shown.current = key;
-    setNodes((previous) => {
-      // Keep the selection across updates of the same diagram (e.g. after a move).
-      const selected = new Set(sameDiagram ? previous.filter((n) => n.selected).map((n) => n.id) : []);
-      return toFlowNodes(diagram).map((n) => (selected.has(n.id) ? { ...n, selected: true } : n));
-    });
-  }, [diagram]);
+  useUndoRedoKeys(server.undo, server.redo);
+  useRenameKey(flow.nodes, dialogs.editNode);
 
   // Which diagram (file/type) has had its initial fit; the canvas exposes it as
   // data-fitted so that tests can wait until the view stops moving.
@@ -383,388 +51,82 @@ export function App() {
   const [fittedKey, setFittedKey] = useState<string | null>(null);
   const onFitted = useCallback(() => setFittedKey(diagramKey), [diagramKey]);
 
-  const targets = useMemo(() => literalTargets(diagram), [diagram]);
-  const clearance = useMemo(() => literalClearance(diagram), [diagram]);
-  const onNodesChange = useCallback(
-    (changes: NodeChange<DiagramFlowNode>[]) =>
-      setNodes((current) => moveLiterals(applyNodeChanges(clampToEdge(changes, clearance), current), targets)),
-    [targets, clearance],
+  // The right-click menus.
+  const menuContext = useMemo<MenuContext | null>(
+    () =>
+      diagram && {
+        diagram,
+        editable,
+        literalConnections: flow.literalConnections,
+        editNode: dialogs.editNode,
+        deleteItems: flow.deleteItems,
+        open,
+        autoLayout: () => {
+          if (diagram.diagramType) send({ type: 'autoLayout', file: diagram.file, diagramType: diagram.diagramType });
+        },
+      },
+    [diagram, editable, flow.literalConnections, flow.deleteItems, dialogs.editNode, open, send],
   );
-
-  /** On drop, store the new positions in the file. */
-  const onNodeDragStop = useCallback<OnNodeDrag<DiagramFlowNode>>(
-    (_event, _node, dragged) => {
-      if (!diagram?.diagramType) return;
-      const moved = dragged
-        .map((n) => ({
-          id: n.id,
-          x: Math.max(Math.round(n.position.x), clearance.get(n.id) ?? 0),
-          y: Math.round(n.position.y),
-          data: n.data,
-        }))
-        .filter((n) => n.x !== n.data.x || n.y !== n.data.y)
-        .map(({ id, x, y }) => ({ id, x, y }));
-      if (moved.length > 0) {
-        send({ type: 'move', file: diagram.file, diagramType: diagram.diagramType, nodes: moved });
-      }
-    },
-    [diagram, send, clearance],
-  );
-
-  const nodeData = useMemo(() => new Map((diagram?.nodes ?? []).map((n) => [n.id, n])), [diagram]);
-
-  /** Offer only connections the server would accept (see connections.ts). */
-  const isValidConnection = useCallback(
-    (c: Connection | FlowEdgeType) => {
-      const source = nodeData.get(c.source);
-      const target = nodeData.get(c.target);
-      return (
-        !!source &&
-        !!target &&
-        canConnect({ node: source, handle: c.sourceHandle }, { node: target, handle: c.targetHandle })
-      );
-    },
-    [nodeData],
-  );
-
-  const onConnect = useCallback<OnConnect>(
-    (c) => {
-      if (!diagram?.diagramType || !c.sourceHandle || !c.targetHandle) return;
-      send({
-        type: 'connect',
-        file: diagram.file,
-        diagramType: diagram.diagramType,
-        source: { node: c.source, handle: c.sourceHandle },
-        target: { node: c.target, handle: c.targetHandle },
-      });
-    },
-    [diagram, send],
-  );
-
-  /** Delete the selected connections; a selected literal stands for the connection it feeds. */
-  const deleteItems = useCallback(
-    ({ edges: edgeIds = [], nodes: nodeIds = [] }: { edges?: string[]; nodes?: string[] }) => {
-      if (diagram?.diagramType && edgeIds.length + nodeIds.length > 0) {
-        send({ type: 'delete', file: diagram.file, diagramType: diagram.diagramType, edges: edgeIds, nodes: nodeIds });
-      }
-    },
-    [diagram, send],
-  );
-
-  const addBlock = useCallback(
-    (typeName: string, x: number, y: number) => {
-      if (diagram?.diagramType) {
-        send({ type: 'addBlock', file: diagram.file, diagramType: diagram.diagramType, typeName, x, y });
-      }
-    },
-    [diagram, send],
-  );
-
-  /** Literal id -> the deletable connection it feeds. */
-  const literalConnections = useMemo(
-    () => new Map((diagram?.edges ?? []).filter((e) => e.fromLiteral && e.deletable).map((e) => [e.source, e.id])),
-    [diagram],
-  );
-
-  /** Delete/Backspace: the selected connections, literals (their connections) and blocks, as one edit. */
-  const onDelete = useCallback(
-    ({ nodes: selectedNodes, edges: selectedEdges }: { nodes: DiagramFlowNode[]; edges: FlowEdgeType[] }) => {
-      const edgeIds = new Set(selectedEdges.filter((e) => e.data?.deletable).map((e) => e.id));
-      const nodeIds: string[] = [];
-      for (const n of selectedNodes) {
-        const id = literalConnections.get(n.id);
-        if (id) edgeIds.add(id);
-        else if (n.data.deletable) nodeIds.push(n.id); // blocks, variables, parameters
-      }
-      deleteItems({ edges: [...edgeIds], nodes: nodeIds });
-    },
-    [literalConnections, deleteItems],
-  );
-
-  const editable = status === 'open' && !!diagram?.diagramType && !diagram.readOnly;
-  /** A tool was dropped: open its form (a literal needs a free input port to feed). */
-  const onTool = useCallback(
-    (request: Omit<FormRequest, 'suggestedName'>) => {
-      setDraggingLiteral(false);
-      if (request.tool === 'literal' && !request.target) {
-        setError('Drop the literal on a free input port (they light up green while you drag).');
-        return;
-      }
-      const base: Record<Tool, string> = { literal: '', variable: 'v', inParameter: 'in', outParameter: 'out' };
-      setFormError(null);
-      setForm({ ...request, suggestedName: unusedName(base[request.tool], diagram) });
-    },
-    [diagram],
-  );
-
-  const submitForm = useCallback(
-    (values: FormValues) => {
-      if (!form || !diagram?.diagramType) return;
-      const common = { file: diagram.file, diagramType: diagram.diagramType };
-      const { x, y } = form.position;
-      const name = values.name ?? '';
-      const typeName = values.typeName ?? 'Int';
-      switch (form.tool) {
-        case 'literal':
-          send({ ...common, type: 'addLiteral', target: form.target!, value: values.value ?? '' }, 'form');
-          break;
-        case 'variable':
-          send({ ...common, type: 'addVariable', kind: values.kind ?? 'var', name, typeName, x, y }, 'form');
-          break;
-        case 'inParameter':
-        case 'outParameter': {
-          const direction = form.tool === 'inParameter' ? 'in' : 'out';
-          send({ ...common, type: 'addParameter', direction, name, typeName, x, y }, 'form');
-          break;
-        }
-      }
-    },
-    [form, diagram, send],
-  );
-
-  const submitPrompt = useCallback(
-    (value: string) => {
-      if (!prompt || !diagram) return;
-      if (prompt.kind === 'newDiagramType') {
-        // Answered with the new type's diagram, so the view switches to it.
-        send({ type: 'addDiagramType', file: diagram.file, name: value.trim() }, 'form');
-        return;
-      }
-      if (!diagram.diagramType) return;
-      const common = { file: diagram.file, diagramType: diagram.diagramType };
-      if (prompt.kind === 'rename') {
-        send({ ...common, type: 'rename', node: prompt.id, name: value.trim() }, 'form');
-      } else {
-        send({ ...common, type: 'setLiteral', literal: prompt.id, value }, 'form');
-      }
-    },
-    [prompt, diagram, send],
-  );
-
-  /** Opens Rename… (or, for a literal, Change value…) next to a node, if it can be edited. */
-  const editNode = useCallback(
-    (node: DiagramFlowNode) => {
-      if (!editable) return;
-      const el = document.querySelector(`.react-flow__node[data-id="${CSS.escape(node.id)}"]`);
-      const r = el?.getBoundingClientRect();
-      const screen = r ? { x: r.left, y: r.bottom + 8 } : { x: 100, y: 100 };
-      setFormError(null);
-      if (node.type === 'literal') {
-        if (literalConnections.has(node.id)) setPrompt({ kind: 'literalValue', id: node.id, initial: node.data.label, screen });
-      } else if (node.data.deletable) {
-        const name = node.id.split('::').pop()!;
-        setPrompt({ kind: 'rename', id: node.id, initial: name, screen });
-      }
-    },
-    [editable, literalConnections],
-  );
-
-  const onNodeDoubleClick = useCallback((_e: React.MouseEvent, node: DiagramFlowNode) => editNode(node), [editNode]);
-
-  /** The right-click menu for a node, a connection or the empty canvas (spec §3.7). */
+  const { openMenu } = dialogs;
   const onNodeContextMenu = useCallback(
     (e: React.MouseEvent, node: DiagramFlowNode) => {
       e.preventDefault();
-      if (!diagram) return;
-      const readOnly = editable ? null : diagram.readOnly ?? 'Not connected';
-      const notHere = node.data.inherited ? 'Inherited' : node.data.inlined ? 'Inside an inlined block' : 'Not declared here';
-      const items: MenuItem[] = [];
-      if (node.type === 'literal') {
-        const id = literalConnections.get(node.id);
-        const reason = readOnly ?? (id ? null : 'Inherited');
-        items.push({ label: 'Change value…', disabledReason: reason, onSelect: () => editNode(node) });
-        items.push({ label: 'Delete', shortcut: 'Del', disabledReason: reason, onSelect: () => id && deleteItems({ edges: [id] }) });
-      } else {
-        const reason = readOnly ?? (node.data.deletable ? null : notHere);
-        items.push({ label: 'Rename…', shortcut: 'F2', disabledReason: reason, onSelect: () => editNode(node) });
-        if (node.type === 'block') {
-          const local = diagram.diagramTypes.includes(node.data.typeName);
-          items.push({
-            label: `Open ${node.data.typeName}`,
-            disabledReason: local ? null : `${node.data.typeName} is not a diagram type in ${diagram.file}`,
-            onSelect: () => open(diagram.file, node.data.typeName),
-          });
-        }
-        items.push({
-          label: 'Delete',
-          shortcut: 'Del',
-          disabledReason: reason,
-          onSelect: () => deleteItems({ nodes: [node.id] }),
-        });
-      }
-      setMenu({ screen: { x: e.clientX, y: e.clientY }, items });
+      if (menuContext) openMenu({ x: e.clientX, y: e.clientY }, nodeMenu(node, menuContext));
     },
-    [diagram, editable, literalConnections, editNode, deleteItems, open],
+    [menuContext, openMenu],
   );
-
   const onEdgeContextMenu = useCallback(
     (e: React.MouseEvent, edge: FlowEdgeType) => {
       e.preventDefault();
-      const reason = !editable
-        ? diagram?.readOnly ?? 'Not connected'
-        : edge.data?.deletable
-          ? null
-          : edge.data?.inherited
-            ? 'Inherited'
-            : 'Not declared here';
-      setMenu({
-        screen: { x: e.clientX, y: e.clientY },
-        items: [{ label: 'Delete', shortcut: 'Del', disabledReason: reason, onSelect: () => deleteItems({ edges: [edge.id] }) }],
-      });
+      if (menuContext) openMenu({ x: e.clientX, y: e.clientY }, edgeMenu(edge, menuContext));
     },
-    [diagram, editable, deleteItems],
+    [menuContext, openMenu],
   );
-
   const onPaneContextMenu = useCallback(
     (e: MouseEvent | React.MouseEvent) => {
       e.preventDefault();
-      if (!diagram?.diagramType) return;
-      const type = diagram.diagramType;
-      setMenu({
-        screen: { x: e.clientX, y: e.clientY },
-        items: [
-          {
-            label: 'Auto layout',
-            disabledReason: editable ? null : diagram.readOnly ?? 'Not connected',
-            onSelect: () => send({ type: 'autoLayout', file: diagram.file, diagramType: type }),
-          },
-        ],
-      });
+      if (menuContext?.diagram.diagramType) openMenu({ x: e.clientX, y: e.clientY }, paneMenu(menuContext));
     },
-    [diagram, editable, send],
+    [menuContext, openMenu],
+  );
+  const onNodeDoubleClick = useCallback(
+    (_e: React.MouseEvent, node: DiagramFlowNode) => dialogs.editNode(node),
+    [dialogs.editNode],
   );
 
-  /** The file can get new types: connected, and the file has no syntax errors. */
-  const fileEditable = status === 'open' && !!diagram && !diagram.readOnly;
-
-  /** The toolbar's New ▾ menu: a new diagram type or external function in the file. */
-  const openNewMenu = useCallback(
+  /** The toolbar's New ▾ menu, below the button. */
+  const onNew = useCallback(
     (e: React.MouseEvent<HTMLButtonElement>) => {
       const r = e.currentTarget.getBoundingClientRect();
       const below = { x: r.left, y: r.bottom + 4 };
-      setFormError(null);
-      setMenu({
-        screen: below,
-        items: [
-          {
-            label: 'Diagram type…',
-            onSelect: () => setPrompt({ kind: 'newDiagramType', id: '', initial: '', screen: below }),
-          },
-          { label: 'External function…', onSelect: () => setExternalForm(below) },
-        ],
-      });
-    },
-    [],
-  );
-
-  const submitExternalFunction = useCallback(
-    (name: string, inputs: ParameterSpec[], output: ParameterSpec | null) => {
-      if (!diagram) return;
-      // Answered with the shown diagram: an external function has none of its own.
-      send(
-        { type: 'addExternalFunction', file: diagram.file, diagramType: diagram.diagramType, name, inputs, output },
-        'form',
+      openMenu(
+        below,
+        newMenu({
+          newDiagramType: () => dialogs.newDiagramType(below),
+          newExternalFunction: () => dialogs.newExternalFunction(below),
+        }),
       );
     },
-    [diagram, send],
+    [openMenu, dialogs.newDiagramType, dialogs.newExternalFunction],
   );
-
-  // F2 renames the selected node (or changes the selected literal's value).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'F2') return;
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
-      const selected = nodes.filter((n) => n.selected);
-      if (selected.length === 1) {
-        e.preventDefault();
-        editNode(selected[0]);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [nodes, editNode]);
 
   const editing = useMemo<Editing>(
     () => ({
       editable,
-      deleteItems,
-      literalConnection: (literalId) => literalConnections.get(literalId) ?? null,
-      draggingLiteral,
+      deleteItems: flow.deleteItems,
+      literalConnection: (literalId) => flow.literalConnections.get(literalId) ?? null,
+      draggingLiteral: dialogs.draggingLiteral,
     }),
-    [editable, deleteItems, literalConnections, draggingLiteral],
-  );
-
-  // Edges are controlled too, so that they can be selected (for Delete); every
-  // diagram from the server replaces them, which clears the selection.
-  const [edges, setEdges] = useState<FlowEdgeType[]>([]);
-  useEffect(() => setEdges(toFlowEdges(diagram)), [diagram]);
-  const onEdgesChange = useCallback(
-    (changes: EdgeChange<FlowEdgeType>[]) => setEdges((current) => applyEdgeChanges(changes, current)),
-    [],
+    [editable, flow.deleteItems, flow.literalConnections, dialogs.draggingLiteral],
   );
 
   return (
     <div className="app">
-      <header className="toolbar">
-        <strong className="toolbar__title">Bloqqi</strong>
-        <label>
-          File{' '}
-          <select
-            data-testid="file-select"
-            value={diagram?.file ?? ''}
-            onChange={(e) => open(e.target.value)}
-            disabled={status !== 'open'}
-          >
-            {!diagram && <option value="">–</option>}
-            {files.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Diagram type{' '}
-          <select
-            data-testid="type-select"
-            value={diagram?.diagramType ?? ''}
-            onChange={(e) => diagram && open(diagram.file, e.target.value)}
-            disabled={status !== 'open' || !diagram || diagram.diagramTypes.length === 0}
-          >
-            {(!diagram || !diagram.diagramType) && <option value="">–</option>}
-            {diagram?.diagramTypes.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          type="button"
-          data-testid="new"
-          onClick={openNewMenu}
-          disabled={!fileEditable}
-          title={fileEditable ? 'Add a diagram type or external function to the file' : diagram?.readOnly ?? undefined}
-        >
-          New ▾
-        </button>
-        <span className="toolbar__group">
-          <button type="button" data-testid="undo" onClick={undo} disabled={!canUndo} title={`Undo (${UNDO_KEYS})`}>
-            Undo
-          </button>
-          <button type="button" data-testid="redo" onClick={redo} disabled={!canRedo} title={`Redo (${REDO_KEYS})`}>
-            Redo
-          </button>
-        </span>
-        <span className={`status status--${status}`} data-testid="status">
-          {status === 'open' ? 'connected' : `${status}…`}
-        </span>
-      </header>
+      <Toolbar server={server} fileEditable={fileEditable} onNew={onNew} />
 
-      {error && (
+      {server.error && (
         <div className="banner banner--error" role="alert">
-          {error}
+          {server.error}
         </div>
       )}
       {diagram?.diagramType && diagram.readOnly && (
@@ -778,7 +140,7 @@ export function App() {
           <Palette
             entries={diagram.palette}
             editable={editable}
-            onDragTool={(tool) => setDraggingLiteral(tool === 'literal')}
+            onDragTool={(tool) => dialogs.setDraggingLiteral(tool === 'literal')}
           />
         )}
         <main className="canvas" data-fitted={fittedKey === diagramKey}>
@@ -793,17 +155,17 @@ export function App() {
             <Canvas
               key={diagramKey}
               diagram={diagram}
-              nodes={nodes}
-              edges={edges}
+              nodes={flow.nodes}
+              edges={flow.edges}
               editable={editable}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onNodeDragStop={onNodeDragStop}
-              onConnect={onConnect}
-              isValidConnection={isValidConnection}
-              onDelete={onDelete}
-              onAddBlock={addBlock}
-              onTool={onTool}
+              onNodesChange={flow.onNodesChange}
+              onEdgesChange={flow.onEdgesChange}
+              onNodeDragStop={flow.onNodeDragStop}
+              onConnect={flow.onConnect}
+              isValidConnection={flow.isValidConnection}
+              onDelete={flow.onDelete}
+              onAddBlock={flow.addBlock}
+              onTool={dialogs.onTool}
               onNodeContextMenu={onNodeContextMenu}
               onEdgeContextMenu={onEdgeContextMenu}
               onPaneContextMenu={onPaneContextMenu}
@@ -812,45 +174,7 @@ export function App() {
             />
           </EditingContext.Provider>
         </main>
-        {menu && <ContextMenu screen={menu.screen} items={menu.items} onClose={() => setMenu(null)} />}
-        {prompt && (
-          <PromptForm
-            key={`${prompt.kind}:${prompt.id}`}
-            request={prompt}
-            error={formError}
-            busy={pendingCount > 0}
-            onSubmit={submitPrompt}
-            onCancel={() => {
-              setPrompt(null);
-              setFormError(null);
-            }}
-          />
-        )}
-        {externalForm && (
-          <ExternalFunctionForm
-            screen={externalForm}
-            error={formError}
-            busy={pendingCount > 0}
-            onSubmit={submitExternalFunction}
-            onCancel={() => {
-              setExternalForm(null);
-              setFormError(null);
-            }}
-          />
-        )}
-        {form && (
-          <AddForm
-            key={`${form.tool}@${form.screen.x},${form.screen.y}`}
-            request={form}
-            error={formError}
-            busy={pendingCount > 0}
-            onSubmit={submitForm}
-            onCancel={() => {
-              setForm(null);
-              setFormError(null);
-            }}
-          />
-        )}
+        <Dialogs dialogs={dialogs} busy={server.pendingCount > 0} />
       </div>
 
       {diagram && diagram.problems.length > 0 && (

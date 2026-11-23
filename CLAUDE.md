@@ -18,6 +18,13 @@
   client and a WebSocket at `/ws`. It has no state: every request reloads the
   file from the workspace directory.
 - Client (`client/`): React + React Flow (`@xyflow/react`), built with Vite.
+  `App.tsx` only composes: `useServer` (WebSocket, request queue, shown
+  diagram, undo/redo), `useDiagramFlow` (React Flow nodes/edges, selection,
+  dragging, connecting, deleting, adding blocks; helpers in `flow.ts`),
+  `useDialogs` + `Dialogs.tsx` (the open menu and forms and what submitting
+  them sends), `menus.ts` (menu contents), `Toolbar.tsx`, `Palette.tsx`,
+  `Canvas.tsx` (React Flow setup, fit, drop), `nodes.tsx`/`FlowEdge.tsx`
+  (drawing), `shortcuts.ts`.
 - Protocol: JSON over the WebSocket, defined in `server/.../Protocol.java` and
   mirrored in `client/src/protocol.ts` (keep the two in sync). Node IDs are
   `Node.accessString()` (`name`, `Super::name`, `outer$inner`).
