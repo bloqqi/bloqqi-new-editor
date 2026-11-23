@@ -214,8 +214,10 @@
 		<copy todir="${e2e.workspace}">
 			<fileset dir="${examples}" includes="*.dia"/>
 		</copy>
-		<!-- Only the drag test edits this file, so parallel tests don't see its changes. -->
+		<!-- Only the drag tests edit this file, so parallel tests don't see its changes. -->
 		<copy file="${examples}/TwoCounters.dia" tofile="${e2e.workspace}/Drag.dia"/>
+		<!-- Likewise for the interception test, which edits a subtype (PTrack). -->
+		<copy file="${examples}/PLib.dia" tofile="${e2e.workspace}/Intercept.dia"/>
 	</target>
 
 	<!-- Started by Playwright (client/playwright.config.ts). -->

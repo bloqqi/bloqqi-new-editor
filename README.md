@@ -13,7 +13,8 @@ In the browser you can:
 
 - view diagram types with inheritance, interceptions and inlined blocks
 - move nodes, or let the editor lay them out automatically
-- connect and disconnect ports
+- connect and disconnect ports, and intercept inherited connections in
+  subtypes
 - add and delete blocks, literals, variables and parameters
 - rename anything, with all uses in the file updated
 - create, rename and delete diagram types and external functions, and change

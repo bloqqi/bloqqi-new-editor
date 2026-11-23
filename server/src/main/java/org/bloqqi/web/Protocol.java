@@ -43,6 +43,8 @@ import com.google.gson.JsonParser;
  *                   its first type, or null for an empty file; answered with the new file)
  * client -> server  {"type":"renameFile", "file", "newName", "diagramType"}   (answered with the renamed file)
  * client -> server  {"type":"deleteFile", "file"}   (answered with the first remaining file)
+ * client -> server  {"type":"intercept", "file", "diagramType", "edge", "atSource",
+ *                    "into":{node,handle}, "outOf":{node,handle}}
  *                   (edits write the file and are answered with the new "diagram",
  *                    whose "change" is {before, after}: the file's text before and
  *                    after the edit; or with an "error" and the file unchanged)
@@ -54,7 +56,7 @@ import com.google.gson.JsonParser;
  *                              inPorts:[{name,typeName,y,connectable}], outPorts:[...],
  *                              inConnectable,outConnectable,deletable}],
  *                    "edges":[{id,source,sourceHandle,target,targetHandle,
- *                              inherited,deletable,error,fromLiteral,intercept,largeMarker}],
+ *                              inherited,deletable,interceptable,error,fromLiteral,intercept,largeMarker}],
  *                    "problems":[{line,column,message}],
  *                    "readOnly": null or why the diagram cannot be edited,
  *                    "palette":[{name,group,kind,doc}], "superTypes":[...],
@@ -83,6 +85,7 @@ final class Protocol {
 			AddVariableRequest, AddParameterRequest, RenameRequest, SetLiteralRequest, AutoLayoutRequest,
 			AddDiagramTypeRequest, AddExternalFunctionRequest, RenameTypeRequest, DeleteTypeRequest,
 			AddSubtypeRequest, SetSuperTypesRequest, CreateFileRequest, RenameFileRequest, DeleteFileRequest,
+			InterceptRequest,
 			RestoreRequest {
 		String file();
 	}
@@ -171,6 +174,11 @@ final class Protocol {
 
 	/** Delete a file and show another. */
 	record DeleteFileRequest(String file) implements Request {
+	}
+
+	/** Intercept an inherited connection (at its target, or at its source) and save the file. */
+	record InterceptRequest(String file, String diagramType, String edge, boolean atSource,
+			DiagramBuilder.Endpoint into, DiagramBuilder.Endpoint outOf) implements Request {
 	}
 
 	/** Undo/redo: replace the file's text with {@code text} if it is still {@code expected}. */
@@ -290,6 +298,11 @@ final class Protocol {
 		if ("deleteFile".equals(type)) {
 			return new DeleteFileRequest(required(o, "file"));
 		}
+		if ("intercept".equals(type)) {
+			JsonElement atSource = o.get("atSource");
+			return new InterceptRequest(string(o, "file"), required(o, "diagramType"), required(o, "edge"),
+					atSource != null && atSource.getAsBoolean(), endpoint(o, "into"), endpoint(o, "outOf"));
+		}
 		if ("restore".equals(type)) {
 			return new RestoreRequest(string(o, "file"), string(o, "diagramType"),
 					required(o, "text"), required(o, "expected"));
@@ -374,6 +387,7 @@ final class Protocol {
 			je.addProperty("targetHandle", e.targetHandle());
 			je.addProperty("inherited", e.inherited());
 			je.addProperty("deletable", e.deletable());
+			je.addProperty("interceptable", e.interceptable());
 			je.addProperty("error", e.error());
 			je.addProperty("fromLiteral", e.fromLiteral());
 			je.addProperty("intercept", e.intercept());

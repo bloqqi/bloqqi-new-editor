@@ -67,6 +67,8 @@ export interface DiagramEdge {
   inherited: boolean;
   /** Can be deleted here (declared by a statement in this type's body). */
   deletable: boolean;
+  /** Can be intercepted here: inherited, not inside an inlined block. */
+  interceptable: boolean;
   /** Connection error or dataflow cycle: red. */
   error: boolean;
   /** Source is a literal: no arrow head. */
@@ -353,6 +355,20 @@ export interface DeleteFileRequest {
   file: string;
 }
 
+/**
+ * Intercept an inherited connection: `intercept X with into, outOf;` (X its
+ * target), or with `atSource`, `intercept source X with into, outOf;` (X its source).
+ */
+export interface InterceptRequest {
+  type: 'intercept';
+  file: string;
+  diagramType: string;
+  edge: string;
+  atSource: boolean;
+  into: Endpoint;
+  outOf: Endpoint;
+}
+
 export type ClientMessage =
   | OpenRequest
   | MoveRequest
@@ -374,6 +390,7 @@ export type ClientMessage =
   | CreateFileRequest
   | RenameFileRequest
   | DeleteFileRequest
+  | InterceptRequest
   | RestoreRequest;
 
 export function webSocketUrl(): string {

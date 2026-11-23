@@ -839,6 +839,65 @@ test('files can be created, renamed and deleted from the File menu', async ({ pa
   expect(exists('Fresher.dia')).toBe(false);
 });
 
+/**
+ * Right-clicks a connection a little after its source handle, where only it
+ * runs (not too close: ports have a larger invisible grab area).
+ */
+async function rightClickConnection(page: Page, sourceNode: string, sourceHandle: string) {
+  const h = (await handle(page, sourceNode, sourceHandle).boundingBox())!;
+  await page.mouse.click(h.x + h.width + 14, h.y + h.height / 2, { button: 'right' });
+}
+
+test('an inherited connection can be intercepted in a subtype', async ({ page }) => {
+  // Intercept.dia is a copy of PLib.dia that only this test edits.
+  const file = resolve('..', 'build', 'e2e-workspace', 'Intercept.dia');
+  const text = () => readFileSync(file, 'utf8');
+  await goto(page, '/?file=Intercept.dia&type=PTrack');
+
+  // Remove PTrack's own interception: P's connection PPart.out -> Out is back.
+  await edge(page, 'P::PPart.out:out->SelReal_1.in:in2').click({ force: true });
+  await page.keyboard.press('Delete');
+  const inherited = edge(page, 'P::PPart.out:out->P::Out.in');
+  await expect(inherited).toHaveCount(1);
+  expect(text()).not.toContain('intercept Out with SelReal_1.in2'); // (PI and PD intercept too)
+
+  // A local connection cannot be intercepted (real right-clicks: an inherited
+  // connection is not selectable, but its menu must still open).
+  await rightClickConnection(page, 'Track', 'out');
+  await expect(page.getByRole('menuitem', { name: 'Intercept', exact: true })).toBeDisabled();
+  await expect(page.getByRole('menuitem', { name: 'Intercept', exact: true })).toHaveAttribute(
+    'title',
+    'Only inherited connections can be intercepted',
+  );
+  await page.keyboard.press('Escape');
+
+  // Escape stops intercepting.
+  await rightClickConnection(page, 'P::PPart', 'out:out');
+  await page.getByRole('menuitem', { name: 'Intercept', exact: true }).click();
+  const hint = page.getByTestId('intercept-hint');
+  await expect(hint).toContainText('Intercept P::PPart.out → P::Out: click the input port');
+  await page.keyboard.press('Escape');
+  await expect(hint).toHaveCount(0);
+
+  // As in the old editor: click an input port (green ones fit), then an output port.
+  await rightClickConnection(page, 'P::PPart', 'out:out');
+  await page.getByRole('menuitem', { name: 'Intercept', exact: true }).click();
+  const in2 = handle(page, 'SelReal_1', 'in:in2');
+  await expect(in2).toHaveClass(/handle--valid/);
+  await expect(handle(page, 'SelReal_1', 'in:sel')).toHaveClass(/handle--unfit/); // a Bool, and taken
+  await in2.click();
+  await expect(hint).toContainText('now click the output port it comes back out of (SelReal_1.in2 → …)');
+  const out = handle(page, 'SelReal_1', 'out:out');
+  await expect(out).toHaveClass(/handle--valid/);
+  await out.click();
+  await expect(hint).toHaveCount(0);
+
+  await expect(edge(page, 'P::PPart.out:out->SelReal_1.in:in2')).toHaveCount(1);
+  await expect(edge(page, 'SelReal_1.out:out->P::Out.in')).toHaveCount(1);
+  await expect(inherited).toHaveCount(0);
+  expect(text()).toContain('intercept Out with SelReal_1.in2, SelReal_1.out;');
+});
+
 test('inherited connections cannot be selected', async ({ page }) => {
   await goto(page, '/?file=PLib.dia&type=PTrack');
   const inherited = edge(page, 'P::e.out:out->P::PPart.in:in1');

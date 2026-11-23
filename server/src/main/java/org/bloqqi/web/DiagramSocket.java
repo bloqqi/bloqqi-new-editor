@@ -171,6 +171,8 @@ public final class DiagramSocket implements Session.Listener.AutoDemanding {
 					DiagramEdits.addSubtype(file, r.superType(), r.name()));
 			case Protocol.SetSuperTypesRequest r -> save(file, r.typeName(),
 					DiagramEdits.setSuperTypes(file, r.typeName(), r.superTypes()));
+			case Protocol.InterceptRequest r -> save(file, r.diagramType(), DiagramEdits.intercept(file,
+					r.diagramType(), r.edge(), r.atSource(), r.into(), r.outOf()));
 			case Protocol.CreateFileRequest r -> throw new IllegalStateException("handled above");
 			case Protocol.RenameFileRequest r -> throw new IllegalStateException("handled above");
 			case Protocol.DeleteFileRequest r -> throw new IllegalStateException("handled above");

@@ -50,6 +50,18 @@ function ConnectionHandle({
   const info = handleInfo(data, id);
   const connectable = canvasConnectable && !!info?.connectable;
   const classes = [className];
+
+  // Intercept mode: block ports of the phase's kind can be clicked.
+  const pick = editing.interceptPick;
+  const pickable = !!pick && data.kind === 'block' && (pick.phase === 'input' ? side === 'in' : side === 'out');
+  if (pick) {
+    const chosen = pick.into?.node === data.id && pick.into.handle === id;
+    if (chosen) classes.push('handle--from');
+    if (pickable) {
+      const fits = info?.typeName === pick.typeName && (side === 'out' || !!info?.connectable);
+      classes.push('handle--pickable', fits ? 'handle--valid' : 'handle--unfit');
+    }
+  }
   if (connectable) classes.push('handle--free');
   // A literal dragged from the palette can be dropped on any free input.
   if (editing.draggingLiteral && connectable && info?.role === 'target') classes.push('handle--valid');
@@ -66,7 +78,15 @@ function ConnectionHandle({
       className={classes.join(' ')}
       style={style}
       title={title}
-      isConnectable={connectable}
+      isConnectable={connectable && !pick}
+      onClick={
+        pickable
+          ? (e) => {
+              e.stopPropagation();
+              editing.pickPort({ node: data.id, handle: id });
+            }
+          : undefined
+      }
     />
   );
 }

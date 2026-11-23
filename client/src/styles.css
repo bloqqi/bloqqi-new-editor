@@ -423,6 +423,55 @@ body,
   box-shadow: 0 0 0 3px rgba(31, 79, 209, 0.35);
 }
 
+/* Intercept mode (old editor: green ports fit, yellow ones do not). */
+/* (React Flow gives handles that cannot start a connection pointer-events: none.) */
+.react-flow__handle.port.handle--pickable {
+  pointer-events: all;
+  cursor: pointer;
+}
+
+.react-flow__handle.port.handle--pickable::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+}
+
+.react-flow__handle.handle--unfit {
+  background: #eab308;
+  border-color: #eab308;
+  box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.3);
+}
+
+.banner--pick {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #eaf3ec;
+  color: #14532d;
+}
+
+.banner--pick button {
+  font: inherit;
+  padding: 2px 10px;
+  flex: none;
+}
+
+.pick-line {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 15;
+  pointer-events: none;
+}
+
+.pick-line line {
+  stroke: var(--local);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 3;
+}
+
 /* The line drawn while connecting. */
 .react-flow__connection-path {
   stroke: var(--local);
@@ -444,6 +493,15 @@ body,
 .react-flow__edge-path.flow--inherited {
   stroke: var(--inherited-border);
   stroke-dasharray: 4 2;
+}
+
+/*
+ * React Flow gives connections that cannot be selected (inherited ones, or
+ * all in a read-only file) pointer-events: none, which would also swallow
+ * their right-click menu (Intercept…). Clicking them still selects nothing.
+ */
+.react-flow__edge.inactive {
+  pointer-events: visibleStroke;
 }
 
 /* Selected (deletable) connections and literals; Delete removes them. */

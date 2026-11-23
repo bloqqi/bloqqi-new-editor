@@ -130,6 +130,8 @@ public record Diagram(
 	 *                     ({@code !Connection.canDelete()}); drawn dashed black
 	 * @param deletable    can be deleted here: not inherited, and declared by a
 	 *                     statement in this type's body (not, e.g., by a wiring)
+	 * @param interceptable can be intercepted here: inherited and not inside an
+	 *                     inlined block (docs/editor-spec.md §3.7)
 	 * @param error        {@code hasErrors() || isOnDataflowCycle()}; drawn red
 	 * @param fromLiteral  the source is a literal (no arrow head)
 	 * @param intercept    null, or {@code "first"}/{@code "second"} for the two halves of an
@@ -145,6 +147,7 @@ public record Diagram(
 			String targetHandle,
 			boolean inherited,
 			boolean deletable,
+			boolean interceptable,
 			boolean error,
 			boolean fromLiteral,
 			String intercept,

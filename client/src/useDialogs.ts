@@ -1,14 +1,14 @@
 // The menu and the forms on top of the canvas: which one is open, its error,
 // and what submitting it sends to the server.
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { FormRequest, FormValues } from './AddForm';
 import type { MenuItem } from './ContextMenu';
 import { unusedName } from './flow';
 import type { DiagramFlowNode } from './nodes';
 import type { Tool } from './Palette';
 import type { PromptRequest } from './PromptForm';
-import type { ClientMessage, DiagramMessage, ParameterSpec } from './protocol';
+import type { ClientMessage, DiagramMessage, Endpoint, ParameterSpec } from './protocol';
 import type { RequestKind } from './useServer';
 
 type Point = { x: number; y: number };
@@ -28,6 +28,8 @@ export interface Dialogs {
   newFileForm: Point | null;
   /** Confirming that the shown file is to be deleted (where it opens). */
   deleteFileForm: Point | null;
+  /** Intercepting a connection: click an input port, then an output port (see editing.ts). */
+  interceptPick: { edge: string; atSource: boolean; into: Endpoint | null } | null;
   /** The server's reason why the open form's last submission was refused. */
   formError: string | null;
   /** A literal is being dragged from the palette. */
@@ -48,6 +50,10 @@ export interface Dialogs {
   newFile: (screen: Point) => void;
   renameFile: (screen: Point) => void;
   deleteFile: (screen: Point) => void;
+  intercept: (edge: string, atSource: boolean) => void;
+  /** A port was clicked while intercepting: the input first, then the output. */
+  pickPort: (port: Endpoint) => void;
+  cancelIntercept: () => void;
   submitAddForm: (values: FormValues) => void;
   submitPrompt: (value: string) => void;
   submitExternalFunction: (name: string, inputs: ParameterSpec[], output: ParameterSpec | null) => void;
@@ -80,6 +86,11 @@ export function useDialogs({
   const [superTypesForm, setSuperTypesForm] = useState<Point | null>(null);
   const [newFileForm, setNewFileForm] = useState<Point | null>(null);
   const [deleteFileForm, setDeleteFileForm] = useState<Point | null>(null);
+  const [interceptPick, setInterceptPick] = useState<{
+    edge: string;
+    atSource: boolean;
+    into: Endpoint | null;
+  } | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [draggingLiteral, setDraggingLiteral] = useState(false);
 
@@ -177,6 +188,49 @@ export function useDialogs({
     setDeleteFileForm(screen);
   }, []);
 
+  const intercept = useCallback(
+    (edge: string, atSource: boolean) => {
+      setError(null);
+      setInterceptPick({ edge, atSource, into: null });
+    },
+    [setError],
+  );
+  const cancelIntercept = useCallback(() => setInterceptPick(null), []);
+
+  const pickPort = useCallback(
+    (port: Endpoint) => {
+      if (!interceptPick || !diagram?.diagramType) return;
+      if (!interceptPick.into) {
+        setInterceptPick({ ...interceptPick, into: port });
+        return;
+      }
+      // Refusals (e.g. a port that does not fit) are shown in the error banner.
+      send({
+        type: 'intercept',
+        file: diagram.file,
+        diagramType: diagram.diagramType,
+        edge: interceptPick.edge,
+        atSource: interceptPick.atSource,
+        into: interceptPick.into,
+        outOf: port,
+      });
+      setInterceptPick(null);
+    },
+    [interceptPick, diagram, send],
+  );
+
+  // Escape stops intercepting, and so does showing another diagram.
+  useEffect(() => {
+    if (!interceptPick) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setInterceptPick(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [interceptPick]);
+  const shownKey = `${diagram?.file}/${diagram?.diagramType}`;
+  useEffect(() => setInterceptPick(null), [shownKey]);
+
   const submitNewFile = useCallback(
     // Answered with the new file, so the view switches to it.
     (file: string, diagramType: string | null) => send({ type: 'createFile', file, diagramType }, 'form'),
@@ -270,6 +324,10 @@ export function useDialogs({
     superTypesForm,
     newFileForm,
     deleteFileForm,
+    interceptPick,
+    intercept,
+    pickPort,
+    cancelIntercept,
     newFile,
     renameFile,
     deleteFile,

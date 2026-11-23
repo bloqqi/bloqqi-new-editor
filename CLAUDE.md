@@ -100,6 +100,15 @@
   These are `Workspace` operations, handled before a request's file is loaded;
   they are not on the undo history. New file names: letters, digits, space,
   `_`, `-`, `.`, ending with `.dia`.
+- Interception (right-click an inherited connection, spec §3.7):
+  `DiagramEdits.intercept` appends `intercept X with T, S;` (X the
+  connection's target) or `intercept source X with T, S;` (X its source); T a
+  free input, S an output. The compiler matches X by its fully qualified name
+  and checks the types. As in the old editor (InterceptTool), the client
+  enters a mode: click a block input port, then a block output port (green
+  ports fit, yellow ones do not; Esc cancels; `InterceptMode.tsx`). React Flow makes unselectable edges `inactive`
+  (`pointer-events: none`); `styles.css` turns that off so inherited
+  connections still get their menu.
 - Client: right-click menus (`ContextMenu.tsx`) for nodes, connections and
   the canvas; double-click or F2 opens Rename/Change value (`PromptForm.tsx`).
 - Edits are checked by reparsing before anything is written; an edit that adds

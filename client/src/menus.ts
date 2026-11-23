@@ -24,6 +24,7 @@ export interface MenuContext {
   newSubtype: (superType: string, at: Point) => void;
   editSuperTypes: (at: Point) => void;
   deleteType: (typeName: string) => void;
+  intercept: (edge: string, atSource: boolean) => void;
 }
 
 /** Why nothing can be edited, or null if it can. */
@@ -65,11 +66,23 @@ export function nodeMenu(node: DiagramFlowNode, c: MenuContext): MenuItem[] {
   return items;
 }
 
-/** Connections: Delete. */
+/** Connections: Intercept, Intercept source port (inherited ones, spec §3.7), Delete. */
 export function edgeMenu(edge: FlowEdgeType, c: MenuContext): MenuItem[] {
-  const reason =
-    readOnlyReason(c) ?? (edge.data?.deletable ? null : edge.data?.inherited ? 'Inherited' : 'Not declared here');
-  return [{ label: 'Delete', shortcut: 'Del', disabledReason: reason, onSelect: () => c.deleteItems({ edges: [edge.id] }) }];
+  const readOnly = readOnlyReason(c);
+  const deleteReason = readOnly ?? (edge.data?.deletable ? null : edge.data?.inherited ? 'Inherited' : 'Not declared here');
+  const interceptReason =
+    readOnly ??
+    (edge.data?.interceptable
+      ? null
+      : edge.data?.inherited
+        ? 'Inside an inlined block'
+        : 'Only inherited connections can be intercepted');
+  const sourceReason = interceptReason ?? (edge.data?.fromLiteral ? 'Its source is a literal' : null);
+  return [
+    { label: 'Intercept', disabledReason: interceptReason, onSelect: () => c.intercept(edge.id, false) },
+    { label: 'Intercept source port', disabledReason: sourceReason, onSelect: () => c.intercept(edge.id, true) },
+    { label: 'Delete', shortcut: 'Del', disabledReason: deleteReason, onSelect: () => c.deleteItems({ edges: [edge.id] }) },
+  ];
 }
 
 /** The empty canvas: Auto layout, and the shown type's Rename…, New subtype…, Super types…, Delete (last). */

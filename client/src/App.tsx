@@ -6,6 +6,8 @@ import type { FlowEdgeType } from './FlowEdge';
 import { edgeMenu, fileMenu, newMenu, nodeMenu, paletteMenu, paneMenu, type MenuContext } from './menus';
 import type { PaletteEntry } from './protocol';
 import type { DiagramFlowNode } from './nodes';
+import { InterceptMode } from './InterceptMode';
+import { handleInfo } from './connections';
 import { Palette } from './Palette';
 import { useRenameKey, useUndoRedoKeys } from './shortcuts';
 import { Toolbar } from './Toolbar';
@@ -70,6 +72,7 @@ export function App() {
         newSubtype: dialogs.newSubtype,
         editSuperTypes: dialogs.editSuperTypes,
         // Answered with the shown type, or the first one if the shown one was deleted.
+        intercept: dialogs.intercept,
         deleteType: (typeName) =>
           send({ type: 'deleteType', file: diagram.file, diagramType: diagram.diagramType, typeName }),
       },
@@ -144,14 +147,24 @@ export function App() {
     [openMenu, diagram, status, dialogs],
   );
 
+  // Intercept mode: the connection, and its type (that of its source).
+  const pick = dialogs.interceptPick;
+  const pickEdge = pick ? diagram?.edges.find((e) => e.id === pick.edge) : undefined;
+  const pickType = useMemo(() => {
+    const source = pickEdge && diagram?.nodes.find((n) => n.id === pickEdge.source);
+    return source ? handleInfo(source, pickEdge.sourceHandle)?.typeName : undefined;
+  }, [pickEdge, diagram]);
+
   const editing = useMemo<Editing>(
     () => ({
       editable,
       deleteItems: flow.deleteItems,
       literalConnection: (literalId) => flow.literalConnections.get(literalId) ?? null,
       draggingLiteral: dialogs.draggingLiteral,
+      interceptPick: pick && { phase: pick.into ? 'output' : 'input', typeName: pickType, into: pick.into },
+      pickPort: dialogs.pickPort,
     }),
-    [editable, flow.deleteItems, flow.literalConnections, dialogs.draggingLiteral],
+    [editable, flow.deleteItems, flow.literalConnections, dialogs.draggingLiteral, pick, pickType, dialogs.pickPort],
   );
 
   return (
@@ -167,6 +180,9 @@ export function App() {
         <div className="banner banner--info" role="status" data-testid="notice">
           {server.notice}
         </div>
+      )}
+      {pick && pickEdge && (
+        <InterceptMode edge={pickEdge} atSource={pick.atSource} into={pick.into} onCancel={dialogs.cancelIntercept} />
       )}
       {diagram?.diagramType && diagram.readOnly && (
         <div className="banner banner--info" data-testid="read-only">

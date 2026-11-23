@@ -208,6 +208,7 @@ public final class DiagramBuilder {
 						id, s.node(), s.handle(), t.node(), t.handle(),
 						!c.canDelete(),
 						isDeletable(c, dt),
+						c.isInherited() && !c.isInlined(),
 						c.hasErrors() || c.isOnDataflowCycle(),
 						fromLiteral,
 						c.isIntercept() ? intercept : null,

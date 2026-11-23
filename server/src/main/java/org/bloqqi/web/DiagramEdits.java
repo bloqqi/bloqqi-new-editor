@@ -1101,6 +1101,58 @@ public final class DiagramEdits {
 	}
 
 	/**
+	 * Intercepts an inherited connection (docs/editor-spec.md §3.7): adds
+	 * {@code intercept X with T, S;} to the type, where X is the connection's
+	 * target, so that the inherited connection {@code A -> X} becomes
+	 * {@code A -> T} and {@code S -> X}; or, {@code atSource},
+	 * {@code intercept source X with T, S;} where X is the connection's source,
+	 * which adds {@code X -> T} and makes the inherited connections from X come
+	 * from S. T must be a free input and S an output; the compiler checks the
+	 * types (and that X is not already intercepted here) through the reparse check.
+	 */
+	public static String intercept(LoadedFile file, String diagramTypeName, String edgeId, boolean atSource,
+			Endpoint into, Endpoint outOf) {
+		requireEditable(file);
+		DiagramBuilder.Builder diagram = DiagramBuilder.resolve(file, diagramTypeName);
+		DiagramType dt = diagram.diagramType();
+		InheritedConnection c = diagram.connection(edgeId);
+		if (c == null) {
+			throw new IllegalArgumentException("No connection " + edgeId + " in " + dt.name());
+		}
+		if (!c.isInherited() || c.isInlined()) {
+			throw new IllegalArgumentException("Only inherited connections can be intercepted; " + edgeId
+					+ " is declared in " + dt.name() + (c.isInlined() ? " (inside an inlined block)" : ""));
+		}
+		Anchor x = atSource ? c.getSource().anchor() : c.getTarget().anchor();
+		if (x == null || x instanceof org.bloqqi.compiler.ast.Literal) {
+			throw new IllegalArgumentException("A connection from a literal cannot be intercepted at its source");
+		}
+		Anchor t = diagram.anchor(into);
+		Anchor s = diagram.anchor(outOf);
+		if (t == null || s == null) {
+			throw new IllegalArgumentException("No such handle: " + (t == null ? into : outOf));
+		}
+		if (!DiagramBuilder.canBeTarget(t)) {
+			throw new IllegalArgumentException(DiagramBuilder.ingoing(t).isEmpty()
+					? "The interception cannot go into " + into
+					: into + " already has an incoming connection");
+		}
+		if (!DiagramBuilder.canBeSource(s)) {
+			throw new IllegalArgumentException("The interception cannot come out of " + outOf);
+		}
+		String statement = "intercept " + (atSource ? "source " : "") + accessText(x) + " with "
+				+ accessText(t) + ", " + accessText(s) + ";";
+		String newText = insertStatement(new SourceText(file.source()), dt, statement, bodyStatements(dt));
+		LoadedFile after = check(file, newText);
+		boolean intoConnected = DiagramBuilder.build(after, diagramTypeName).edges().stream()
+				.anyMatch(e -> e.target().equals(into.node()) && e.targetHandle().equals(into.handle()));
+		if (!intoConnected) {
+			throw new IllegalStateException("Could not intercept " + edgeId + " (" + statement + ")");
+		}
+		return newText;
+	}
+
+	/**
 	 * How a connection end is written: {@code Anchor.access()} (as in the old
 	 * editor), but without the {@code Super::} qualification of an inherited block
 	 * when its name alone is unambiguous ({@code e.out} rather than {@code P::e.out}).
