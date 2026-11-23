@@ -11,6 +11,8 @@ import {
   useStore,
   ViewportPortal,
   type EdgeChange,
+  type EdgeMouseHandler,
+  type NodeMouseHandler,
   type IsValidConnection,
   type NodeChange,
   type OnBeforeDelete,
@@ -98,6 +100,10 @@ export interface CanvasProps {
   onAddBlock: (typeName: string, x: number, y: number) => void;
   /** A tool was dropped (literal: on the target port, if any): open its form. */
   onTool: (request: Omit<FormRequest, 'suggestedName'>) => void;
+  onNodeContextMenu: NodeMouseHandler<DiagramFlowNode>;
+  onEdgeContextMenu: EdgeMouseHandler<FlowEdgeType>;
+  onPaneContextMenu: (event: MouseEvent | React.MouseEvent) => void;
+  onNodeDoubleClick: NodeMouseHandler<DiagramFlowNode>;
   /** Called once the initial view of the diagram has been fitted. */
   onFitted: () => void;
 }
@@ -127,6 +133,10 @@ function Flow({
   onDelete,
   onAddBlock,
   onTool,
+  onNodeContextMenu,
+  onEdgeContextMenu,
+  onPaneContextMenu,
+  onNodeDoubleClick,
   onFitted,
 }: CanvasProps) {
   const flow = useReactFlow();
@@ -203,6 +213,11 @@ function Flow({
       onBeforeDelete={onBeforeDelete}
       onDragOver={onDragOver}
       onDrop={onDrop}
+      onNodeContextMenu={onNodeContextMenu}
+      onEdgeContextMenu={onEdgeContextMenu}
+      onPaneContextMenu={onPaneContextMenu}
+      onNodeDoubleClick={onNodeDoubleClick}
+      zoomOnDoubleClick={false}
       deleteKeyCode={editable ? DELETE_KEYS : null}
       edgesFocusable={false}
       proOptions={{ hideAttribution: true }}

@@ -92,6 +92,12 @@ public final class DiagramSocket implements Session.Listener.AutoDemanding {
 					add.diagramType(), add.kind(), add.name(), add.typeName(), add.x(), add.y()));
 			case Protocol.AddParameterRequest add -> save(file, add.diagramType(), DiagramEdits.addParameter(file,
 					add.diagramType(), add.in(), add.name(), add.typeName(), add.x(), add.y()));
+			case Protocol.RenameRequest r -> save(file, r.diagramType(),
+					DiagramEdits.rename(file, r.diagramType(), r.node(), r.name()));
+			case Protocol.SetLiteralRequest r -> save(file, r.diagramType(),
+					DiagramEdits.setLiteral(file, r.diagramType(), r.literal(), r.value()));
+			case Protocol.AutoLayoutRequest r -> save(file, r.diagramType(),
+					DiagramEdits.autoLayout(file, r.diagramType()));
 		};
 	}
 

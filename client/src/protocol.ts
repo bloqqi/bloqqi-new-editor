@@ -223,6 +223,31 @@ export interface AddParameterRequest {
   y: number;
 }
 
+/** Rename a block, variable or parameter and all its uses. Answered like a move. */
+export interface RenameRequest {
+  type: 'rename';
+  file: string;
+  diagramType: string;
+  node: string;
+  name: string;
+}
+
+/** Change a literal's value. Answered like a move. */
+export interface SetLiteralRequest {
+  type: 'setLiteral';
+  file: string;
+  diagramType: string;
+  literal: string;
+  value: string;
+}
+
+/** Lay out the whole type with ELK and store it. Answered like a move. */
+export interface AutoLayoutRequest {
+  type: 'autoLayout';
+  file: string;
+  diagramType: string;
+}
+
 export type ClientMessage =
   | OpenRequest
   | MoveRequest
@@ -232,6 +257,9 @@ export type ClientMessage =
   | AddLiteralRequest
   | AddVariableRequest
   | AddParameterRequest
+  | RenameRequest
+  | SetLiteralRequest
+  | AutoLayoutRequest
   | RestoreRequest;
 
 export function webSocketUrl(): string {

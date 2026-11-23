@@ -14,6 +14,8 @@ import { canConnect } from './connections';
 import { EditingContext, type Editing } from './editing';
 import { UndoHistory } from './history';
 import { AddForm, type FormRequest, type FormValues } from './AddForm';
+import { ContextMenu, type MenuItem } from './ContextMenu';
+import { PromptForm, type PromptRequest } from './PromptForm';
 import { Palette, type Tool } from './Palette';
 import { type FlowEdgeType } from './FlowEdge';
 import { type DiagramFlowNode } from './nodes';
@@ -174,6 +176,10 @@ export function App() {
   const [form, setForm] = useState<FormRequest | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [draggingLiteral, setDraggingLiteral] = useState(false);
+  // The one-field form for Rename… and Change value… (shares formError).
+  const [prompt, setPrompt] = useState<PromptRequest | null>(null);
+  // The right-click menu.
+  const [menu, setMenu] = useState<{ screen: { x: number; y: number }; items: MenuItem[] } | null>(null);
 
   const history = useRef(new UndoHistory());
   const [, historyChanged] = useReducer((n: number) => n + 1, 0);
@@ -264,6 +270,7 @@ export function App() {
             }
             if (request?.kind === 'form') {
               setForm(null);
+              setPrompt(null);
               setFormError(null);
             }
             setDiagram(message);
@@ -510,6 +517,128 @@ export function App() {
     [form, diagram, send],
   );
 
+  const submitPrompt = useCallback(
+    (value: string) => {
+      if (!prompt || !diagram?.diagramType) return;
+      const common = { file: diagram.file, diagramType: diagram.diagramType };
+      if (prompt.kind === 'rename') {
+        send({ ...common, type: 'rename', node: prompt.id, name: value.trim() }, 'form');
+      } else {
+        send({ ...common, type: 'setLiteral', literal: prompt.id, value }, 'form');
+      }
+    },
+    [prompt, diagram, send],
+  );
+
+  /** Opens Rename… (or, for a literal, Change value…) next to a node, if it can be edited. */
+  const editNode = useCallback(
+    (node: DiagramFlowNode) => {
+      if (!editable) return;
+      const el = document.querySelector(`.react-flow__node[data-id="${CSS.escape(node.id)}"]`);
+      const r = el?.getBoundingClientRect();
+      const screen = r ? { x: r.left, y: r.bottom + 8 } : { x: 100, y: 100 };
+      setFormError(null);
+      if (node.type === 'literal') {
+        if (literalConnections.has(node.id)) setPrompt({ kind: 'literalValue', id: node.id, initial: node.data.label, screen });
+      } else if (node.data.deletable) {
+        const name = node.id.split('::').pop()!;
+        setPrompt({ kind: 'rename', id: node.id, initial: name, screen });
+      }
+    },
+    [editable, literalConnections],
+  );
+
+  const onNodeDoubleClick = useCallback((_e: React.MouseEvent, node: DiagramFlowNode) => editNode(node), [editNode]);
+
+  /** The right-click menu for a node, a connection or the empty canvas (spec §3.7). */
+  const onNodeContextMenu = useCallback(
+    (e: React.MouseEvent, node: DiagramFlowNode) => {
+      e.preventDefault();
+      if (!diagram) return;
+      const readOnly = editable ? null : diagram.readOnly ?? 'Not connected';
+      const notHere = node.data.inherited ? 'Inherited' : node.data.inlined ? 'Inside an inlined block' : 'Not declared here';
+      const items: MenuItem[] = [];
+      if (node.type === 'literal') {
+        const id = literalConnections.get(node.id);
+        const reason = readOnly ?? (id ? null : 'Inherited');
+        items.push({ label: 'Change value…', disabledReason: reason, onSelect: () => editNode(node) });
+        items.push({ label: 'Delete', shortcut: 'Del', disabledReason: reason, onSelect: () => id && deleteItems({ edges: [id] }) });
+      } else {
+        const reason = readOnly ?? (node.data.deletable ? null : notHere);
+        items.push({ label: 'Rename…', shortcut: 'F2', disabledReason: reason, onSelect: () => editNode(node) });
+        if (node.type === 'block') {
+          const local = diagram.diagramTypes.includes(node.data.typeName);
+          items.push({
+            label: `Open ${node.data.typeName}`,
+            disabledReason: local ? null : `${node.data.typeName} is not a diagram type in ${diagram.file}`,
+            onSelect: () => open(diagram.file, node.data.typeName),
+          });
+        }
+        items.push({
+          label: 'Delete',
+          shortcut: 'Del',
+          disabledReason: reason,
+          onSelect: () => deleteItems({ nodes: [node.id] }),
+        });
+      }
+      setMenu({ screen: { x: e.clientX, y: e.clientY }, items });
+    },
+    [diagram, editable, literalConnections, editNode, deleteItems, open],
+  );
+
+  const onEdgeContextMenu = useCallback(
+    (e: React.MouseEvent, edge: FlowEdgeType) => {
+      e.preventDefault();
+      const reason = !editable
+        ? diagram?.readOnly ?? 'Not connected'
+        : edge.data?.deletable
+          ? null
+          : edge.data?.inherited
+            ? 'Inherited'
+            : 'Not declared here';
+      setMenu({
+        screen: { x: e.clientX, y: e.clientY },
+        items: [{ label: 'Delete', shortcut: 'Del', disabledReason: reason, onSelect: () => deleteItems({ edges: [edge.id] }) }],
+      });
+    },
+    [diagram, editable, deleteItems],
+  );
+
+  const onPaneContextMenu = useCallback(
+    (e: MouseEvent | React.MouseEvent) => {
+      e.preventDefault();
+      if (!diagram?.diagramType) return;
+      const type = diagram.diagramType;
+      setMenu({
+        screen: { x: e.clientX, y: e.clientY },
+        items: [
+          {
+            label: 'Auto layout',
+            disabledReason: editable ? null : diagram.readOnly ?? 'Not connected',
+            onSelect: () => send({ type: 'autoLayout', file: diagram.file, diagramType: type }),
+          },
+        ],
+      });
+    },
+    [diagram, editable, send],
+  );
+
+  // F2 renames the selected node (or changes the selected literal's value).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'F2') return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+      const selected = nodes.filter((n) => n.selected);
+      if (selected.length === 1) {
+        e.preventDefault();
+        editNode(selected[0]);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [nodes, editNode]);
+
   const editing = useMemo<Editing>(
     () => ({
       editable,
@@ -620,10 +749,28 @@ export function App() {
               onDelete={onDelete}
               onAddBlock={addBlock}
               onTool={onTool}
+              onNodeContextMenu={onNodeContextMenu}
+              onEdgeContextMenu={onEdgeContextMenu}
+              onPaneContextMenu={onPaneContextMenu}
+              onNodeDoubleClick={onNodeDoubleClick}
               onFitted={onFitted}
             />
           </EditingContext.Provider>
         </main>
+        {menu && <ContextMenu screen={menu.screen} items={menu.items} onClose={() => setMenu(null)} />}
+        {prompt && (
+          <PromptForm
+            key={`${prompt.kind}:${prompt.id}`}
+            request={prompt}
+            error={formError}
+            busy={pendingCount > 0}
+            onSubmit={submitPrompt}
+            onCancel={() => {
+              setPrompt(null);
+              setFormError(null);
+            }}
+          />
+        )}
         {form && (
           <AddForm
             key={`${form.tool}@${form.screen.x},${form.screen.y}`}

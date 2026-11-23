@@ -138,7 +138,8 @@ public final class DiagramBuilder {
 			nodesById.put(n.accessString(), n);
 		}
 
-		Diagram build(String fileName, List<String> names, List<Problem> problems, String readOnly) {
+		/** The connections between shown nodes, for layout (literal sources left out). */
+		private List<Layout.Link> links() {
 			List<Layout.Link> links = new ArrayList<>();
 			for (InheritedConnection c : dt.getConnections()) {
 				Endpoint s = endpoint(c.getSource().anchor(), true);
@@ -147,6 +148,16 @@ public final class DiagramBuilder {
 					links.add(new Layout.Link(s, t));
 				}
 			}
+			return links;
+		}
+
+		/** A fresh ELK layout of all nodes, ignoring stored positions. */
+		Map<String, Layout.Rect> autoLayout() {
+			return new Layout(dt).elkLayout(nodes, labels, links());
+		}
+
+		Diagram build(String fileName, List<String> names, List<Problem> problems, String readOnly) {
+			List<Layout.Link> links = links();
 			Map<String, Layout.Rect> rects = new Layout(dt).layout(nodes, labels, links);
 
 			List<DiagramNode> result = new ArrayList<>();

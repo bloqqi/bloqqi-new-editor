@@ -159,7 +159,8 @@ final class Layout {
 		}
 	}
 
-	private Map<String, Rect> elkLayout(List<? extends Node> nodes, Map<String, String> labels, List<Link> links) {
+	/** Lays out all nodes with ELK, ignoring stored positions ("Auto layout"). */
+	Map<String, Rect> elkLayout(List<? extends Node> nodes, Map<String, String> labels, List<Link> links) {
 		ElkSetup.ensure();
 		ElkNode graph = ElkGraphUtil.createGraph();
 		graph.setProperty(CoreOptions.DIRECTION, Direction.RIGHT);

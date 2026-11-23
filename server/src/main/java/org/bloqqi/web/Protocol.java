@@ -27,6 +27,9 @@ import com.google.gson.JsonParser;
  *                   (kind: var, input or output)
  * client -> server  {"type":"addParameter", "file", "diagramType", "direction", "name", "typeName", "x", "y"}
  *                   (direction: in or out)
+ * client -> server  {"type":"rename", "file", "diagramType", "node", "name"}
+ * client -> server  {"type":"setLiteral", "file", "diagramType", "literal", "value"}
+ * client -> server  {"type":"autoLayout", "file", "diagramType"}
  *                   (edits write the file and are answered with the new "diagram",
  *                    whose "change" is {before, after}: the file's text before and
  *                    after the edit; or with an "error" and the file unchanged)
@@ -59,7 +62,8 @@ final class Protocol {
 	/** A client -> server message. */
 	sealed interface Request
 			permits OpenRequest, MoveRequest, ConnectRequest, DeleteRequest, AddBlockRequest, AddLiteralRequest,
-			AddVariableRequest, AddParameterRequest, RestoreRequest {
+			AddVariableRequest, AddParameterRequest, RenameRequest, SetLiteralRequest, AutoLayoutRequest,
+			RestoreRequest {
 		String file();
 	}
 
@@ -98,6 +102,18 @@ final class Protocol {
 	/** Add an in- or out-parameter at (x, y) and save the file. */
 	record AddParameterRequest(String file, String diagramType, boolean in, String name, String typeName,
 			int x, int y) implements Request {
+	}
+
+	/** Rename a block, variable or parameter (and its uses) and save the file. */
+	record RenameRequest(String file, String diagramType, String node, String name) implements Request {
+	}
+
+	/** Change a literal's value and save the file. */
+	record SetLiteralRequest(String file, String diagramType, String literal, String value) implements Request {
+	}
+
+	/** Lay out the whole type with ELK and save the file. */
+	record AutoLayoutRequest(String file, String diagramType) implements Request {
 	}
 
 	/** Undo/redo: replace the file's text with {@code text} if it is still {@code expected}. */
@@ -168,6 +184,17 @@ final class Protocol {
 			}
 			return new AddParameterRequest(string(o, "file"), required(o, "diagramType"), direction.equals("in"),
 					required(o, "name"), required(o, "typeName"), integer(o, "x"), integer(o, "y"));
+		}
+		if ("rename".equals(type)) {
+			return new RenameRequest(string(o, "file"), required(o, "diagramType"), required(o, "node"),
+					required(o, "name"));
+		}
+		if ("setLiteral".equals(type)) {
+			return new SetLiteralRequest(string(o, "file"), required(o, "diagramType"), required(o, "literal"),
+					required(o, "value"));
+		}
+		if ("autoLayout".equals(type)) {
+			return new AutoLayoutRequest(string(o, "file"), required(o, "diagramType"));
 		}
 		if ("restore".equals(type)) {
 			return new RestoreRequest(string(o, "file"), string(o, "diagramType"),

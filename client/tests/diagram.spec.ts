@@ -520,6 +520,81 @@ test.describe.serial('moving nodes', () => {
     await expect(node(page, 'reset')).toBeVisible();
     expect(readFileSync(dragFile, 'utf8')).toContain('diagramtype Acc(in: Int, reset: Bool => out: Int) {');
   });
+
+  // Rename, the right-click menu and auto layout (still Drag.dia).
+
+  test('double-clicking a block renames it and its uses', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Acc');
+    const prompt = page.getByTestId('prompt-form');
+    await node(page, 'add').dblclick();
+    await expect(prompt.getByLabel('Name')).toHaveValue('add');
+
+    // A name that is taken is refused in the form.
+    await prompt.getByLabel('Name').fill('state');
+    await prompt.getByLabel('Name').press('Enter');
+    await expect(prompt.getByRole('alert')).toContainText('already used');
+
+    await prompt.getByLabel('Name').fill('sum');
+    await prompt.getByLabel('Name').press('Enter');
+    await expect(prompt).toHaveCount(0);
+    await expect(node(page, 'sum')).toHaveText('sum');
+    const text = readFileSync(dragFile, 'utf8');
+    expect(text).toContain('  sum: Add;');
+    expect(text).toContain('connect(in, sum.in1);');
+    expect(text).toContain('  sum = (');
+    expect(text).not.toMatch(/\badd\b/);
+  });
+
+  test('the right-click menu renames a variable', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Acc');
+    await node(page, 'level').click({ button: 'right' });
+    await expect(page.getByTestId('context-menu')).toBeVisible();
+    await page.getByRole('menuitem', { name: /Rename/ }).click();
+    await page.getByTestId('prompt-form').getByLabel('Name').fill('height');
+    await page.getByTestId('prompt-form').getByLabel('Name').press('Enter');
+    await expect(node(page, 'height')).toHaveText('input height');
+    expect(readFileSync(dragFile, 'utf8')).toContain('  input height: Real;');
+  });
+
+  test('F2 renames the selected node', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Acc');
+    await node(page, 'state').click();
+    await page.keyboard.press('F2');
+    await expect(page.getByTestId('prompt-form').getByLabel('Name')).toHaveValue('state');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('prompt-form')).toHaveCount(0);
+  });
+
+  test("the right-click menu changes a literal's value", async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Main');
+    await node(page, '#literal:acc2.in:in').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: /Change value/ }).click();
+    const value = page.getByTestId('prompt-form').getByLabel('Value');
+    await expect(value).toHaveValue('7');
+    await value.fill('9');
+    await value.press('Enter');
+    await expect(node(page, '#literal:acc2.in:in')).toHaveText('9');
+    expect(readFileSync(dragFile, 'utf8')).toContain('connect(9, acc2.in);');
+  });
+
+  test("Open shows a block's type", async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Main');
+    await node(page, 'acc1').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Open Acc' }).click();
+    await expect(page.getByTestId('type-select')).toHaveValue('Acc');
+    await expect(node(page, 'sum')).toBeVisible();
+  });
+
+  test('Auto layout lays out the type again, and can be undone', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Acc');
+    const before = readFileSync(dragFile, 'utf8');
+    const pane = (await page.locator('.react-flow__pane').boundingBox())!;
+    await page.mouse.click(pane.x + pane.width - 40, pane.y + pane.height - 40, { button: 'right' });
+    await page.getByRole('menuitem', { name: 'Auto layout' }).click();
+    await expect.poll(() => readFileSync(dragFile, 'utf8')).not.toBe(before);
+    await page.keyboard.press('Control+z');
+    await expect.poll(() => readFileSync(dragFile, 'utf8')).toBe(before);
+  });
 });
 
 test('the palette lists the types a block can be added of', async ({ page }) => {
@@ -533,6 +608,22 @@ test('the palette lists the types a block can be added of', async ({ page }) => 
   await expect(palette.getByTestId('palette-Add')).toBeHidden();
   await palette.getByText('Standard library').click();
   await expect(palette.getByTestId('palette-Add')).toBeVisible();
+});
+
+test('the right-click menu greys out what cannot be changed here', async ({ page }) => {
+  await goto(page, '/?file=PLib.dia&type=PTrack');
+  await node(page, 'P::e').click({ button: 'right' });
+  const menu = page.getByTestId('context-menu');
+  await expect(menu.getByRole('menuitem', { name: /Rename/ })).toBeDisabled();
+  await expect(menu.getByRole('menuitem', { name: /Rename/ })).toHaveAttribute('title', 'Inherited');
+  await expect(menu.getByRole('menuitem', { name: /Delete/ })).toBeDisabled();
+  // RSub is from the standard library: there is no diagram to open.
+  await expect(menu.getByRole('menuitem', { name: 'Open RSub' })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+
+  await node(page, 'SelReal_1').click({ button: 'right' });
+  await expect(menu.getByRole('menuitem', { name: /Rename/ })).toBeEnabled();
 });
 
 test('inherited blocks have no delete button', async ({ page }) => {

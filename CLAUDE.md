@@ -59,6 +59,17 @@
   header's parentheses from the remaining parameters' own text. Deleting a
   parameter or variable that is used elsewhere (e.g. `acc1.in` in another
   type) is refused by the reparse check.
+- Rename (`DiagramEdits.rename`): the declaration and every use in the file
+  (`x`, `x.in1`, `P::x`, annotation keys, and port uses `blk.p` for a
+  parameter) are found by walking all `VarUse`s and following `decl()`
+  through inheritance wrappers (and from a port to its parameter), then
+  replacing the name in each use's text; `Add_1;` becomes `newName: Add;`.
+  Besides the reparse check, the uses are counted again after the rename:
+  if the new name captures or loses a use (e.g. a subtype has its own block
+  with that name), the rename is refused. Also `setLiteral` (change a
+  literal's text) and `autoLayout` (ELK on the whole type, stored).
+- Client: right-click menus (`ContextMenu.tsx`) for nodes, connections and
+  the canvas; double-click or F2 opens Rename/Change value (`PromptForm.tsx`).
 - Edits are checked by reparsing before anything is written; an edit that adds
   syntax errors or more semantic errors is refused. Files with syntax errors
   are not edited. Writes go through a temp file and an atomic move.
