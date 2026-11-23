@@ -15,6 +15,7 @@ import { EditingContext, type Editing } from './editing';
 import { UndoHistory } from './history';
 import { AddForm, type FormRequest, type FormValues } from './AddForm';
 import { ContextMenu, type MenuItem } from './ContextMenu';
+import { ExternalFunctionForm } from './ExternalFunctionForm';
 import { PromptForm, type PromptRequest } from './PromptForm';
 import { Palette, type Tool } from './Palette';
 import { type FlowEdgeType } from './FlowEdge';
@@ -22,6 +23,7 @@ import { type DiagramFlowNode } from './nodes';
 import {
   webSocketUrl,
   type ClientMessage,
+  type ParameterSpec,
   type DiagramEdge,
   type DiagramMessage,
   type ServerMessage,
@@ -178,6 +180,8 @@ export function App() {
   const [draggingLiteral, setDraggingLiteral] = useState(false);
   // The one-field form for Rename… and Change value… (shares formError).
   const [prompt, setPrompt] = useState<PromptRequest | null>(null);
+  // The form for a new external function (where it opens), or null.
+  const [externalForm, setExternalForm] = useState<{ x: number; y: number } | null>(null);
   // The right-click menu.
   const [menu, setMenu] = useState<{ screen: { x: number; y: number }; items: MenuItem[] } | null>(null);
 
@@ -271,6 +275,7 @@ export function App() {
             if (request?.kind === 'form') {
               setForm(null);
               setPrompt(null);
+              setExternalForm(null);
               setFormError(null);
             }
             setDiagram(message);
@@ -519,7 +524,13 @@ export function App() {
 
   const submitPrompt = useCallback(
     (value: string) => {
-      if (!prompt || !diagram?.diagramType) return;
+      if (!prompt || !diagram) return;
+      if (prompt.kind === 'newDiagramType') {
+        // Answered with the new type's diagram, so the view switches to it.
+        send({ type: 'addDiagramType', file: diagram.file, name: value.trim() }, 'form');
+        return;
+      }
+      if (!diagram.diagramType) return;
       const common = { file: diagram.file, diagramType: diagram.diagramType };
       if (prompt.kind === 'rename') {
         send({ ...common, type: 'rename', node: prompt.id, name: value.trim() }, 'form');
@@ -623,6 +634,41 @@ export function App() {
     [diagram, editable, send],
   );
 
+  /** The file can get new types: connected, and the file has no syntax errors. */
+  const fileEditable = status === 'open' && !!diagram && !diagram.readOnly;
+
+  /** The toolbar's New ▾ menu: a new diagram type or external function in the file. */
+  const openNewMenu = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      const r = e.currentTarget.getBoundingClientRect();
+      const below = { x: r.left, y: r.bottom + 4 };
+      setFormError(null);
+      setMenu({
+        screen: below,
+        items: [
+          {
+            label: 'Diagram type…',
+            onSelect: () => setPrompt({ kind: 'newDiagramType', id: '', initial: '', screen: below }),
+          },
+          { label: 'External function…', onSelect: () => setExternalForm(below) },
+        ],
+      });
+    },
+    [],
+  );
+
+  const submitExternalFunction = useCallback(
+    (name: string, inputs: ParameterSpec[], output: ParameterSpec | null) => {
+      if (!diagram) return;
+      // Answered with the shown diagram: an external function has none of its own.
+      send(
+        { type: 'addExternalFunction', file: diagram.file, diagramType: diagram.diagramType, name, inputs, output },
+        'form',
+      );
+    },
+    [diagram, send],
+  );
+
   // F2 renames the selected node (or changes the selected literal's value).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -694,6 +740,15 @@ export function App() {
             ))}
           </select>
         </label>
+        <button
+          type="button"
+          data-testid="new"
+          onClick={openNewMenu}
+          disabled={!fileEditable}
+          title={fileEditable ? 'Add a diagram type or external function to the file' : diagram?.readOnly ?? undefined}
+        >
+          New ▾
+        </button>
         <span className="toolbar__group">
           <button type="button" data-testid="undo" onClick={undo} disabled={!canUndo} title={`Undo (${UNDO_KEYS})`}>
             Undo
@@ -767,6 +822,18 @@ export function App() {
             onSubmit={submitPrompt}
             onCancel={() => {
               setPrompt(null);
+              setFormError(null);
+            }}
+          />
+        )}
+        {externalForm && (
+          <ExternalFunctionForm
+            screen={externalForm}
+            error={formError}
+            busy={pendingCount > 0}
+            onSubmit={submitExternalFunction}
+            onCancel={() => {
+              setExternalForm(null);
               setFormError(null);
             }}
           />

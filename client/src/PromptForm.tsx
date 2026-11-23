@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 
-/** What a one-field form edits: the name of a node, or the value of a literal. */
+/** What a one-field form edits: a node's name, a literal's value, or a new diagram type's name. */
 export interface PromptRequest {
-  kind: 'rename' | 'literalValue';
-  /** The node (renamed) or literal (new value). */
+  kind: 'rename' | 'literalValue' | 'newDiagramType';
+  /** The node (renamed) or literal (new value); unused for a new diagram type. */
   id: string;
   initial: string;
   /** Where the form appears (client coordinates). */
@@ -33,7 +33,11 @@ export function PromptForm({
     input.current?.focus();
     input.current?.select();
   }, []);
-  const rename = request.kind === 'rename';
+  const texts = {
+    rename: { title: `Rename ${request.initial}`, label: 'Name', button: 'Rename', aria: 'Rename' },
+    literalValue: { title: 'Change value', label: 'Value', button: 'Change', aria: 'Change value' },
+    newDiagramType: { title: 'New diagram type', label: 'Name', button: 'Create', aria: 'New diagram type' },
+  }[request.kind];
   const left = Math.min(request.screen.x, window.innerWidth - 260);
   const top = Math.max(8, Math.min(request.screen.y, window.innerHeight - 170));
 
@@ -41,7 +45,7 @@ export function PromptForm({
     <form
       className="add-form"
       data-testid="prompt-form"
-      aria-label={rename ? 'Rename' : 'Change value'}
+      aria-label={texts.aria}
       style={{ left, top }}
       onSubmit={(e) => {
         e.preventDefault();
@@ -54,10 +58,10 @@ export function PromptForm({
         }
       }}
     >
-      <h3 className="add-form__title">{rename ? `Rename ${request.initial}` : 'Change value'}</h3>
+      <h3 className="add-form__title">{texts.title}</h3>
       <label>
-        {rename ? 'Name' : 'Value'}
-        <input ref={input} value={value} onChange={(e) => setValue(e.target.value)} aria-label={rename ? 'Name' : 'Value'} />
+        {texts.label}
+        <input ref={input} value={value} onChange={(e) => setValue(e.target.value)} aria-label={texts.label} />
       </label>
       {error && (
         <p className="add-form__error" role="alert">
@@ -69,7 +73,7 @@ export function PromptForm({
           Cancel
         </button>
         <button type="submit" disabled={busy}>
-          {rename ? 'Rename' : 'Change'}
+          {texts.button}
         </button>
       </div>
     </form>

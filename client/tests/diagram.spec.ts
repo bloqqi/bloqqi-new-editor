@@ -595,6 +595,54 @@ test.describe.serial('moving nodes', () => {
     await page.keyboard.press('Control+z');
     await expect.poll(() => readFileSync(dragFile, 'utf8')).toBe(before);
   });
+
+  // New diagram types and external functions (still Drag.dia).
+
+  test('New ▸ Diagram type adds an empty type and shows it; undo removes it', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Acc');
+    await page.getByTestId('new').click();
+    await page.getByRole('menuitem', { name: 'Diagram type…' }).click();
+    const prompt = page.getByTestId('prompt-form');
+
+    // A taken name is refused in the form.
+    await prompt.getByLabel('Name').fill('Acc');
+    await prompt.getByLabel('Name').press('Enter');
+    await expect(prompt.getByRole('alert')).toContainText('already a type called Acc');
+
+    await prompt.getByLabel('Name').fill('Counter');
+    await prompt.getByLabel('Name').press('Enter');
+    await expect(prompt).toHaveCount(0);
+    await expect(page.getByTestId('type-select')).toHaveValue('Counter');
+    await expect(page).toHaveURL(/type=Counter/);
+    await expect(page.locator('.react-flow__node')).toHaveCount(0);
+    await expect(page.getByTestId('palette-Acc')).toBeVisible(); // its blocks can be added
+    expect(readFileSync(dragFile, 'utf8')).toMatch(/\ndiagramtype Counter \{\n\}\n$/);
+
+    await page.keyboard.press('Control+z');
+    await expect(page.getByTestId('type-select').locator('option', { hasText: 'Counter' })).toHaveCount(0);
+    expect(readFileSync(dragFile, 'utf8')).not.toContain('Counter');
+  });
+
+  test('New ▸ External function adds a function with parameters; the view stays', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Main');
+    await page.getByTestId('new').click();
+    await page.getByRole('menuitem', { name: 'External function…' }).click();
+    const form = page.getByTestId('external-function-form');
+    await form.getByLabel('Name').fill('Log');
+    await form.getByRole('button', { name: '+ Add input' }).click();
+    await form.getByRole('button', { name: '+ Add input' }).click();
+    await form.getByLabel('Input 2 name').fill('level');
+    await form.getByLabel('Input 2 type').selectOption('Real');
+    await form.getByLabel('Output').check();
+    await form.getByLabel('Output name').fill('ok');
+    await form.getByLabel('Output type').selectOption('Bool');
+    await form.getByRole('button', { name: 'Create' }).click();
+
+    await expect(form).toHaveCount(0);
+    await expect(page.getByTestId('type-select')).toHaveValue('Main');
+    await expect(page.getByTestId('palette-Log')).toContainText('external');
+    expect(readFileSync(dragFile, 'utf8')).toContain('external Print(in: Int);\nexternal Log(in1: Int, level: Real => ok: Bool);\n');
+  });
 });
 
 test('the palette lists the types a block can be added of', async ({ page }) => {

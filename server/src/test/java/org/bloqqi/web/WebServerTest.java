@@ -205,6 +205,30 @@ public class WebServerTest {
 		assertEquals(external, Files.readString(file));
 	}
 
+	@Test
+	public void newDiagramTypesAreShownExternalFunctionsAreNot() throws Exception {
+		Path dir = temp.newFolder("types").toPath();
+		Files.copy(Examples.dir().resolve("TwoCounters.dia"), dir.resolve("TwoCounters.dia"));
+		stop();
+		clients.clear();
+		server = new WebServer(0, new Workspace(dir), null);
+		server.start();
+
+		Client client = new Client();
+		client.next(); // workspace
+		client.socket.sendText("{\"type\":\"addDiagramType\",\"file\":\"TwoCounters.dia\",\"name\":\"Counter\"}", true);
+		JsonObject added = client.next();
+		assertEquals(added.toString(), "Counter", added.get("diagramType").getAsString());
+
+		client.socket.sendText("{\"type\":\"addExternalFunction\",\"file\":\"TwoCounters.dia\","
+				+ "\"diagramType\":\"Counter\",\"name\":\"Log\",\"inputs\":[{\"name\":\"x\",\"typeName\":\"Int\"}],"
+				+ "\"output\":null}", true);
+		JsonObject external = client.next();
+		assertEquals(external.toString(), "Counter", external.get("diagramType").getAsString());
+		assertTrue(external.get("palette").toString().contains("\"name\":\"Log\""));
+		assertTrue(Files.readString(dir.resolve("TwoCounters.dia")).contains("external Log(x: Int);"));
+	}
+
 	private static String restore(String diagramType, String text, String expected) {
 		JsonObject o = new JsonObject();
 		o.addProperty("type", "restore");

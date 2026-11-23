@@ -248,6 +248,32 @@ export interface AutoLayoutRequest {
   diagramType: string;
 }
 
+/** Add an empty diagram type at the end of the file; answered with its diagram. */
+export interface AddDiagramTypeRequest {
+  type: 'addDiagramType';
+  file: string;
+  name: string;
+}
+
+/** A parameter of a new external function. */
+export interface ParameterSpec {
+  name: string;
+  typeName: string;
+}
+
+/**
+ * Add `external <name>(<inputs> => <output>);`; answered with the diagram of
+ * `diagramType` (the view does not change: an external function has no diagram).
+ */
+export interface AddExternalFunctionRequest {
+  type: 'addExternalFunction';
+  file: string;
+  diagramType: string | null;
+  name: string;
+  inputs: ParameterSpec[];
+  output: ParameterSpec | null;
+}
+
 export type ClientMessage =
   | OpenRequest
   | MoveRequest
@@ -260,6 +286,8 @@ export type ClientMessage =
   | RenameRequest
   | SetLiteralRequest
   | AutoLayoutRequest
+  | AddDiagramTypeRequest
+  | AddExternalFunctionRequest
   | RestoreRequest;
 
 export function webSocketUrl(): string {

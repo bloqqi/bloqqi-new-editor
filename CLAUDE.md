@@ -68,6 +68,12 @@
   if the new name captures or loses a use (e.g. a subtype has its own block
   with that name), the rename is refused. Also `setLiteral` (change a
   literal's text) and `autoLayout` (ELK on the whole type, stored).
+- New types (toolbar "New ▾"): `addDiagramType` appends `diagramtype Name {}`
+  at the end of the file and the answer is that type's diagram (the view
+  switches); `addExternalFunction` inserts `external Name(a: Int => r: Bool);`
+  after the file's last external function (or at the end), and the answer is
+  the shown type's diagram (an external function has no diagram). Type names
+  must be free in `Program.lookupType` (file, standard library, built-ins).
 - Client: right-click menus (`ContextMenu.tsx`) for nodes, connections and
   the canvas; double-click or F2 opens Rename/Change value (`PromptForm.tsx`).
 - Edits are checked by reparsing before anything is written; an edit that adds

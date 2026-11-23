@@ -428,6 +428,97 @@ public final class DiagramEdits {
 		return newText;
 	}
 
+	/** A parameter of a new external function. */
+	public record Parameter(String name, String typeName) {
+	}
+
+	/**
+	 * Adds an empty diagram type {@code diagramtype <name> {}} at the end of the
+	 * file (written as the old editor wrote types without parameters).
+	 *
+	 * @throws IllegalArgumentException if the name is invalid or a type of that name exists
+	 */
+	public static String addDiagramType(LoadedFile file, String name) {
+		requireEditable(file);
+		requireNewTypeName(file, name);
+		SourceText source = new SourceText(file.source());
+		String nl = source.lineSeparator();
+		String text = file.source();
+		boolean endsWithNewline = text.isEmpty() || text.endsWith("\n") || text.endsWith("\r");
+		String newText = text + (endsWithNewline ? "" : nl) + "diagramtype " + name + " {" + nl + "}" + nl;
+		LoadedFile after = check(file, newText);
+		if (!DiagramBuilder.diagramTypeNames(after.compilationUnit()).contains(name)) {
+			throw new IllegalStateException("Could not add diagram type " + name);
+		}
+		return newText;
+	}
+
+	/**
+	 * Adds an external function {@code external <name>(a: Int, b: Real => r: Bool);}
+	 * with zero or more input parameters and an optional output parameter, after
+	 * the file's last external function (or at the end of the file).
+	 *
+	 * @param output the output parameter, or null
+	 * @throws IllegalArgumentException if a name or type is invalid, or names clash
+	 */
+	public static String addExternalFunction(LoadedFile file, String name, List<Parameter> inputs, Parameter output) {
+		requireEditable(file);
+		requireNewTypeName(file, name);
+		List<Parameter> all = new ArrayList<>(inputs);
+		if (output != null) {
+			all.add(output);
+		}
+		Set<String> names = new HashSet<>();
+		for (Parameter p : all) {
+			if (p.name() == null || !org.bloqqi.compiler.ast.Program.isIdValid(p.name())) {
+				throw new IllegalArgumentException("Not a valid parameter name: \"" + p.name() + "\"");
+			}
+			if (!names.add(p.name())) {
+				throw new IllegalArgumentException("Two parameters are called " + p.name());
+			}
+			requireSimpleType(p.typeName());
+		}
+		StringJoiner ins = new StringJoiner(", ");
+		inputs.forEach(p -> ins.add(p.name() + ": " + p.typeName()));
+		String out = output == null ? ""
+				: (inputs.isEmpty() ? "=> " : " => ") + output.name() + ": " + output.typeName();
+		String declaration = "external " + name + "(" + ins + out + ");";
+
+		SourceText source = new SourceText(file.source());
+		String nl = source.lineSeparator();
+		String text = file.source();
+		int lastExternal = -1;
+		for (TypeDecl td : file.compilationUnit().typeDecls()) {
+			if (td.isExternalFunction() && SourceText.hasPosition(td)) {
+				lastExternal = Math.max(lastExternal, source.end(td));
+			}
+		}
+		String newText;
+		if (lastExternal >= 0) {
+			int eol = endOfLine(text, lastExternal);
+			newText = text.substring(0, eol) + nl + declaration + text.substring(eol);
+		} else {
+			boolean endsWithNewline = text.isEmpty() || text.endsWith("\n") || text.endsWith("\r");
+			newText = text + (endsWithNewline ? "" : nl) + declaration + nl;
+		}
+		LoadedFile after = check(file, newText);
+		TypeDecl added = after.program().lookupType(name);
+		if (added == null || !added.isExternalFunction()) {
+			throw new IllegalStateException("Could not add external function " + name);
+		}
+		return newText;
+	}
+
+	/** A new type name: an identifier no type has (in the file, the standard library or built in). */
+	private static void requireNewTypeName(LoadedFile file, String name) {
+		if (name == null || !org.bloqqi.compiler.ast.Program.isIdValid(name)) {
+			throw new IllegalArgumentException("Not a valid name: \"" + name + "\"");
+		}
+		if (file.program().lookupType(name) != null) {
+			throw new IllegalArgumentException("There is already a type called " + name);
+		}
+	}
+
 	/** Types offered for new parameters and variables, as in the old editor (spec §3.5, Q11). */
 	public static final List<String> SIMPLE_TYPES = List.of("Int", "Bool", "Real");
 

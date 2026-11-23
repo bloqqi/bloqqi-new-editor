@@ -30,6 +30,10 @@ import com.google.gson.JsonParser;
  * client -> server  {"type":"rename", "file", "diagramType", "node", "name"}
  * client -> server  {"type":"setLiteral", "file", "diagramType", "literal", "value"}
  * client -> server  {"type":"autoLayout", "file", "diagramType"}
+ * client -> server  {"type":"addDiagramType", "file", "name"}   (answered with the new type's diagram)
+ * client -> server  {"type":"addExternalFunction", "file", "diagramType", "name",
+ *                    "inputs":[{name,typeName}], "output": {name,typeName} or null}
+ *                   (answered with the diagram of "diagramType")
  *                   (edits write the file and are answered with the new "diagram",
  *                    whose "change" is {before, after}: the file's text before and
  *                    after the edit; or with an "error" and the file unchanged)
@@ -63,7 +67,7 @@ final class Protocol {
 	sealed interface Request
 			permits OpenRequest, MoveRequest, ConnectRequest, DeleteRequest, AddBlockRequest, AddLiteralRequest,
 			AddVariableRequest, AddParameterRequest, RenameRequest, SetLiteralRequest, AutoLayoutRequest,
-			RestoreRequest {
+			AddDiagramTypeRequest, AddExternalFunctionRequest, RestoreRequest {
 		String file();
 	}
 
@@ -114,6 +118,15 @@ final class Protocol {
 
 	/** Lay out the whole type with ELK and save the file. */
 	record AutoLayoutRequest(String file, String diagramType) implements Request {
+	}
+
+	/** Add an empty diagram type and show it. */
+	record AddDiagramTypeRequest(String file, String name) implements Request {
+	}
+
+	/** Add an external function; keep showing {@code diagramType} (may be null). */
+	record AddExternalFunctionRequest(String file, String diagramType, String name,
+			List<DiagramEdits.Parameter> inputs, DiagramEdits.Parameter output) implements Request {
 	}
 
 	/** Undo/redo: replace the file's text with {@code text} if it is still {@code expected}. */
@@ -195,6 +208,21 @@ final class Protocol {
 		}
 		if ("autoLayout".equals(type)) {
 			return new AutoLayoutRequest(string(o, "file"), required(o, "diagramType"));
+		}
+		if ("addDiagramType".equals(type)) {
+			return new AddDiagramTypeRequest(string(o, "file"), required(o, "name"));
+		}
+		if ("addExternalFunction".equals(type)) {
+			List<DiagramEdits.Parameter> inputs = new ArrayList<>();
+			JsonElement in = o.get("inputs");
+			if (in != null && in.isJsonArray()) {
+				for (JsonElement e : in.getAsJsonArray()) {
+					inputs.add(parameter(e.getAsJsonObject()));
+				}
+			}
+			JsonElement out = o.get("output");
+			return new AddExternalFunctionRequest(string(o, "file"), string(o, "diagramType"), required(o, "name"),
+					inputs, out == null || out.isJsonNull() ? null : parameter(out.getAsJsonObject()));
 		}
 		if ("restore".equals(type)) {
 			return new RestoreRequest(string(o, "file"), string(o, "diagramType"),
@@ -325,6 +353,10 @@ final class Protocol {
 			throw new IllegalArgumentException("Missing " + key);
 		}
 		return new DiagramBuilder.Endpoint(required(e.getAsJsonObject(), "node"), required(e.getAsJsonObject(), "handle"));
+	}
+
+	private static DiagramEdits.Parameter parameter(JsonObject o) {
+		return new DiagramEdits.Parameter(required(o, "name"), required(o, "typeName"));
 	}
 
 	/** An optional array of strings (empty if missing). */
