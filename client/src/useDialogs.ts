@@ -22,6 +22,8 @@ export interface Dialogs {
   prompt: PromptRequest | null;
   /** The form for a new external function (where it opens). */
   externalForm: Point | null;
+  /** The form for the shown type's super types (where it opens). */
+  superTypesForm: Point | null;
   /** The server's reason why the open form's last submission was refused. */
   formError: string | null;
   /** A literal is being dragged from the palette. */
@@ -36,9 +38,13 @@ export interface Dialogs {
   editNode: (node: DiagramFlowNode) => void;
   newDiagramType: (screen: Point) => void;
   newExternalFunction: (screen: Point) => void;
+  renameType: (typeName: string, screen: Point) => void;
+  newSubtype: (superType: string, screen: Point) => void;
+  editSuperTypes: (screen: Point) => void;
   submitAddForm: (values: FormValues) => void;
   submitPrompt: (value: string) => void;
   submitExternalFunction: (name: string, inputs: ParameterSpec[], output: ParameterSpec | null) => void;
+  submitSuperTypes: (superTypes: string[]) => void;
   /** Closes the open form. */
   cancelForm: () => void;
   /** The outcome of a submitted form: null closes it, a reason is shown in it. */
@@ -62,6 +68,7 @@ export function useDialogs({
   const [addForm, setAddForm] = useState<FormRequest | null>(null);
   const [prompt, setPrompt] = useState<PromptRequest | null>(null);
   const [externalForm, setExternalForm] = useState<Point | null>(null);
+  const [superTypesForm, setSuperTypesForm] = useState<Point | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [draggingLiteral, setDraggingLiteral] = useState(false);
 
@@ -72,6 +79,7 @@ export function useDialogs({
     setAddForm(null);
     setPrompt(null);
     setExternalForm(null);
+    setSuperTypesForm(null);
     setFormError(null);
   }, []);
 
@@ -122,6 +130,21 @@ export function useDialogs({
     setExternalForm(screen);
   }, []);
 
+  const renameType = useCallback((typeName: string, screen: Point) => {
+    setFormError(null);
+    setPrompt({ kind: 'renameType', id: typeName, initial: typeName, screen });
+  }, []);
+
+  const newSubtype = useCallback((superType: string, screen: Point) => {
+    setFormError(null);
+    setPrompt({ kind: 'newSubtype', id: superType, initial: '', screen });
+  }, []);
+
+  const editSuperTypes = useCallback((screen: Point) => {
+    setFormError(null);
+    setSuperTypesForm(screen);
+  }, []);
+
   const submitAddForm = useCallback(
     (values: FormValues) => {
       if (!addForm || !diagram?.diagramType) return;
@@ -150,10 +173,19 @@ export function useDialogs({
   const submitPrompt = useCallback(
     (value: string) => {
       if (!prompt || !diagram) return;
-      if (prompt.kind === 'newDiagramType') {
-        // Answered with the new type's diagram, so the view switches to it.
-        send({ type: 'addDiagramType', file: diagram.file, name: value.trim() }, 'form');
-        return;
+      const name = value.trim();
+      switch (prompt.kind) {
+        case 'newDiagramType':
+          // Answered with the new type's diagram, so the view switches to it.
+          send({ type: 'addDiagramType', file: diagram.file, name }, 'form');
+          return;
+        case 'newSubtype':
+          send({ type: 'addSubtype', file: diagram.file, superType: prompt.id, name }, 'form');
+          return;
+        case 'renameType':
+          // Answered with the shown type, under its new name if it was the one renamed.
+          send({ type: 'renameType', file: diagram.file, diagramType: diagram.diagramType, typeName: prompt.id, name }, 'form');
+          return;
       }
       if (!diagram.diagramType) return;
       const common = { file: diagram.file, diagramType: diagram.diagramType };
@@ -178,8 +210,21 @@ export function useDialogs({
     [diagram, send],
   );
 
+  const submitSuperTypes = useCallback(
+    (superTypes: string[]) => {
+      if (!diagram?.diagramType) return;
+      send({ type: 'setSuperTypes', file: diagram.file, typeName: diagram.diagramType, superTypes }, 'form');
+    },
+    [diagram, send],
+  );
+
   return {
     menu,
+    superTypesForm,
+    renameType,
+    newSubtype,
+    editSuperTypes,
+    submitSuperTypes,
     addForm,
     prompt,
     externalForm,

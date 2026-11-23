@@ -81,6 +81,13 @@
   after the file's last external function (or at the end), and the answer is
   the shown type's diagram (an external function has no diagram). Type names
   must be free in `Program.lookupType` (file, standard library, built-ins).
+- Type management (palette right-click, canvas menu): `renameType` rewrites
+  the declaration, every `TypeUse` written with the name (`x: T`, `extends T`,
+  `T::x`, annotation keys) and simple-named blocks `T_1` -> `U_1` with their
+  uses, then recounts the uses; `deleteType` removes the whole declaration
+  (annotations, wiring) and is refused while anything uses the type;
+  `addSubtype` appends `diagramtype X extends T {}`; `setSuperTypes` rewrites
+  the `extends` clause (between the parameters and `{`).
 - Client: right-click menus (`ContextMenu.tsx`) for nodes, connections and
   the canvas; double-click or F2 opens Rename/Change value (`PromptForm.tsx`).
 - Edits are checked by reparsing before anything is written; an edit that adds

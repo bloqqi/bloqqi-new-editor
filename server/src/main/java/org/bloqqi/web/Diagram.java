@@ -14,6 +14,7 @@ import java.util.List;
  * @param readOnly     why the diagram cannot be edited, or null if it can
  *                     ({@link DiagramEdits#readOnlyReason})
  * @param palette      the types a block can be added of, in the old editor's order
+ * @param superTypes   the names in the shown type's {@code extends} clause
  */
 public record Diagram(
 		String file,
@@ -23,7 +24,8 @@ public record Diagram(
 		List<DiagramEdge> edges,
 		List<Problem> problems,
 		String readOnly,
-		List<PaletteEntry> palette) {
+		List<PaletteEntry> palette,
+		List<String> superTypes) {
 
 	/** Palette groups. */
 	public static final String LOCAL = "local";

@@ -4,7 +4,9 @@
 import type { MenuItem } from './ContextMenu';
 import type { FlowEdgeType } from './FlowEdge';
 import type { DiagramFlowNode } from './nodes';
-import type { DiagramMessage } from './protocol';
+import type { DiagramMessage, PaletteEntry } from './protocol';
+
+type Point = { x: number; y: number };
 
 export interface MenuContext {
   diagram: DiagramMessage;
@@ -16,6 +18,12 @@ export interface MenuContext {
   deleteItems: (items: { edges?: string[]; nodes?: string[] }) => void;
   open: (file: string, diagramType?: string) => void;
   autoLayout: () => void;
+  /** The file can get new or changed types (connected, no syntax errors). */
+  fileEditable: boolean;
+  renameType: (typeName: string, at: Point) => void;
+  newSubtype: (superType: string, at: Point) => void;
+  editSuperTypes: (at: Point) => void;
+  deleteType: (typeName: string) => void;
 }
 
 /** Why nothing can be edited, or null if it can. */
@@ -64,9 +72,40 @@ export function edgeMenu(edge: FlowEdgeType, c: MenuContext): MenuItem[] {
   return [{ label: 'Delete', shortcut: 'Del', disabledReason: reason, onSelect: () => c.deleteItems({ edges: [edge.id] }) }];
 }
 
-/** The empty canvas: Auto layout. */
-export function paneMenu(c: MenuContext): MenuItem[] {
-  return [{ label: 'Auto layout', disabledReason: readOnlyReason(c), onSelect: c.autoLayout }];
+/** The empty canvas: Auto layout, and the shown type's Rename…, New subtype…, Super types…, Delete (last). */
+export function paneMenu(c: MenuContext, at: Point): MenuItem[] {
+  const type = c.diagram.diagramType!;
+  const items = typeItems(type, 'diagramType', c, at);
+  const del = items.pop()!; // Delete last
+  return [
+    { label: 'Auto layout', disabledReason: readOnlyReason(c), onSelect: c.autoLayout },
+    ...items,
+    { label: 'Super types…', disabledReason: fileReason(c), onSelect: () => c.editSuperTypes(at) },
+    del,
+  ];
+}
+
+/** A type in the palette's "This file" group: Open (diagram types), Rename…, New subtype…, Delete. */
+export function paletteMenu(entry: PaletteEntry, c: MenuContext, at: Point): MenuItem[] {
+  const items: MenuItem[] = [];
+  if (entry.kind === 'diagramType') {
+    items.push({ label: `Open ${entry.name}`, onSelect: () => c.open(c.diagram.file, entry.name) });
+  }
+  return [...items, ...typeItems(entry.name, entry.kind, c, at)];
+}
+
+function fileReason(c: MenuContext): string | null {
+  return c.fileEditable ? null : c.diagram.readOnly ?? 'Not connected';
+}
+
+function typeItems(name: string, kind: PaletteEntry['kind'], c: MenuContext, at: Point): MenuItem[] {
+  const reason = fileReason(c);
+  const items: MenuItem[] = [{ label: `Rename ${name}…`, disabledReason: reason, onSelect: () => c.renameType(name, at) }];
+  if (kind === 'diagramType') {
+    items.push({ label: `New subtype of ${name}…`, disabledReason: reason, onSelect: () => c.newSubtype(name, at) });
+  }
+  items.push({ label: `Delete ${name}`, disabledReason: reason, onSelect: () => c.deleteType(name) });
+  return items;
 }
 
 /** The toolbar's New ▾ menu. */

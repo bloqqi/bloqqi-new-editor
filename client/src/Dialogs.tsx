@@ -2,10 +2,20 @@ import { AddForm } from './AddForm';
 import { ContextMenu } from './ContextMenu';
 import { ExternalFunctionForm } from './ExternalFunctionForm';
 import { PromptForm } from './PromptForm';
+import type { DiagramMessage } from './protocol';
+import { SuperTypesForm } from './SuperTypesForm';
 import type { Dialogs as DialogState } from './useDialogs';
 
 /** Renders the open menu and form (see useDialogs). */
-export function Dialogs({ dialogs: d, busy }: { dialogs: DialogState; busy: boolean }) {
+export function Dialogs({
+  dialogs: d,
+  diagram,
+  busy,
+}: {
+  dialogs: DialogState;
+  diagram: DiagramMessage | null;
+  busy: boolean;
+}) {
   return (
     <>
       {d.menu && <ContextMenu screen={d.menu.screen} items={d.menu.items} onClose={d.closeMenu} />}
@@ -25,6 +35,18 @@ export function Dialogs({ dialogs: d, busy }: { dialogs: DialogState; busy: bool
           error={d.formError}
           busy={busy}
           onSubmit={d.submitExternalFunction}
+          onCancel={d.cancelForm}
+        />
+      )}
+      {d.superTypesForm && diagram?.diagramType && (
+        <SuperTypesForm
+          typeName={diagram.diagramType}
+          candidates={diagram.diagramTypes.filter((t) => t !== diagram.diagramType)}
+          current={diagram.superTypes}
+          screen={d.superTypesForm}
+          error={d.formError}
+          busy={busy}
+          onSubmit={d.submitSuperTypes}
           onCancel={d.cancelForm}
         />
       )}

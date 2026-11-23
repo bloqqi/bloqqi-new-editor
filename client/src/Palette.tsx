@@ -33,11 +33,14 @@ export function Palette({
   entries,
   editable,
   onDragTool,
+  onEntryContextMenu,
 }: {
   entries: PaletteEntry[];
   editable: boolean;
   /** A tool is being dragged (or null when the drag ends). */
   onDragTool: (tool: Tool | null) => void;
+  /** Right-click on one of the file's own types. */
+  onEntryContextMenu: (event: React.MouseEvent, entry: PaletteEntry) => void;
 }) {
   const local = entries.filter((e) => e.group === 'local');
   const standard = entries.filter((e) => e.group === 'standard');
@@ -70,7 +73,7 @@ export function Palette({
         ))}
       </ul>
       <h2 className="palette__title palette__title--blocks">Blocks</h2>
-      <Group title="This file" entries={local} editable={editable} open />
+      <Group title="This file" entries={local} editable={editable} open onContextMenu={onEntryContextMenu} />
       <Group title="Standard library" entries={standard} editable={editable} open={false} />
     </aside>
   );
@@ -81,11 +84,13 @@ function Group({
   entries,
   editable,
   open,
+  onContextMenu,
 }: {
   title: string;
   entries: PaletteEntry[];
   editable: boolean;
   open: boolean;
+  onContextMenu?: (event: React.MouseEvent, entry: PaletteEntry) => void;
 }) {
   return (
     <details className="palette__group" open={open}>
@@ -107,6 +112,7 @@ function Group({
                 event.dataTransfer.setData(PALETTE_MIME, e.name);
                 event.dataTransfer.effectAllowed = 'copy';
               }}
+              onContextMenu={onContextMenu && ((event) => onContextMenu(event, e))}
             >
               <span className="palette__name">{e.name}</span>
               {KIND_LABELS[e.kind] && <span className="palette__kind">{KIND_LABELS[e.kind]}</span>}

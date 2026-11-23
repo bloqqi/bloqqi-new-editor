@@ -34,6 +34,11 @@ import com.google.gson.JsonParser;
  * client -> server  {"type":"addExternalFunction", "file", "diagramType", "name",
  *                    "inputs":[{name,typeName}], "output": {name,typeName} or null}
  *                   (answered with the diagram of "diagramType")
+ * client -> server  {"type":"renameType", "file", "diagramType", "typeName", "name"}
+ * client -> server  {"type":"deleteType", "file", "diagramType", "typeName"}
+ *                   (both answered with the shown diagramType, renamed or, if deleted, the first)
+ * client -> server  {"type":"addSubtype", "file", "superType", "name"}   (answered with the new type)
+ * client -> server  {"type":"setSuperTypes", "file", "typeName", "superTypes":[...]}
  *                   (edits write the file and are answered with the new "diagram",
  *                    whose "change" is {before, after}: the file's text before and
  *                    after the edit; or with an "error" and the file unchanged)
@@ -48,7 +53,7 @@ import com.google.gson.JsonParser;
  *                              inherited,deletable,error,fromLiteral,intercept,largeMarker}],
  *                    "problems":[{line,column,message}],
  *                    "readOnly": null or why the diagram cannot be edited,
- *                    "palette":[{name,group,kind,doc}],
+ *                    "palette":[{name,group,kind,doc}], "superTypes":[...],
  *                    "change": null, or {before, after} if the request changed the file}
  * server -> client  {"type":"error", "message"}
  * </pre>
@@ -67,7 +72,8 @@ final class Protocol {
 	sealed interface Request
 			permits OpenRequest, MoveRequest, ConnectRequest, DeleteRequest, AddBlockRequest, AddLiteralRequest,
 			AddVariableRequest, AddParameterRequest, RenameRequest, SetLiteralRequest, AutoLayoutRequest,
-			AddDiagramTypeRequest, AddExternalFunctionRequest, RestoreRequest {
+			AddDiagramTypeRequest, AddExternalFunctionRequest, RenameTypeRequest, DeleteTypeRequest,
+			AddSubtypeRequest, SetSuperTypesRequest, RestoreRequest {
 		String file();
 	}
 
@@ -127,6 +133,22 @@ final class Protocol {
 	/** Add an external function; keep showing {@code diagramType} (may be null). */
 	record AddExternalFunctionRequest(String file, String diagramType, String name,
 			List<DiagramEdits.Parameter> inputs, DiagramEdits.Parameter output) implements Request {
+	}
+
+	/** Rename a diagram type or external function; {@code diagramType} is the shown one. */
+	record RenameTypeRequest(String file, String diagramType, String typeName, String name) implements Request {
+	}
+
+	/** Delete a diagram type or external function; {@code diagramType} is the shown one. */
+	record DeleteTypeRequest(String file, String diagramType, String typeName) implements Request {
+	}
+
+	/** Add {@code diagramtype <name> extends <superType>} and show it. */
+	record AddSubtypeRequest(String file, String superType, String name) implements Request {
+	}
+
+	/** Set the super types of a diagram type. */
+	record SetSuperTypesRequest(String file, String typeName, List<String> superTypes) implements Request {
 	}
 
 	/** Undo/redo: replace the file's text with {@code text} if it is still {@code expected}. */
@@ -224,6 +246,19 @@ final class Protocol {
 			return new AddExternalFunctionRequest(string(o, "file"), string(o, "diagramType"), required(o, "name"),
 					inputs, out == null || out.isJsonNull() ? null : parameter(out.getAsJsonObject()));
 		}
+		if ("renameType".equals(type)) {
+			return new RenameTypeRequest(string(o, "file"), string(o, "diagramType"), required(o, "typeName"),
+					required(o, "name"));
+		}
+		if ("deleteType".equals(type)) {
+			return new DeleteTypeRequest(string(o, "file"), string(o, "diagramType"), required(o, "typeName"));
+		}
+		if ("addSubtype".equals(type)) {
+			return new AddSubtypeRequest(string(o, "file"), required(o, "superType"), required(o, "name"));
+		}
+		if ("setSuperTypes".equals(type)) {
+			return new SetSuperTypesRequest(string(o, "file"), required(o, "typeName"), strings(o, "superTypes"));
+		}
 		if ("restore".equals(type)) {
 			return new RestoreRequest(string(o, "file"), string(o, "diagramType"),
 					required(o, "text"), required(o, "expected"));
@@ -308,6 +343,7 @@ final class Protocol {
 			palette.add(jp);
 		}
 		o.add("palette", palette);
+		o.add("superTypes", strings(d.superTypes()));
 		if (change == null) {
 			o.add("change", com.google.gson.JsonNull.INSTANCE);
 		} else {

@@ -229,7 +229,7 @@ function Flow({
           <div className="allowed-area" data-testid="allowed-area" aria-hidden="true" />
         </ViewportPortal>
       )}
-      <FitControls origin={origin} onFitted={onFitted} />
+      <FitControls origin={origin} empty={!!diagram?.diagramType && diagram.nodes.length === 0} onFitted={onFitted} />
     </ReactFlow>
   );
 }
@@ -240,9 +240,23 @@ function Flow({
  * shaded outside; here the fitted view is then moved so that the content's
  * top-left corner sits OUTSIDE_PX from the canvas' top-left corner, like a page.
  */
-function FitControls({ origin, onFitted }: { origin: [number, number]; onFitted: () => void }) {
+function FitControls({
+  origin,
+  empty,
+  onFitted,
+}: {
+  origin: [number, number];
+  /** The diagram has no nodes (e.g. a new diagram type). */
+  empty: boolean;
+  onFitted: () => void;
+}) {
   const flow = useReactFlow();
   const fit = useCallback(async () => {
+    if (empty) {
+      // Nothing to fit: show the top-left corner at normal size.
+      await flow.setViewport({ x: OUTSIDE_PX - origin[0], y: OUTSIDE_PX - origin[1], zoom: 1 });
+      return;
+    }
     await flow.fitView(FIT_OPTIONS);
     const { x, y, zoom } = flow.getViewport();
     await flow.setViewport({
@@ -250,16 +264,17 @@ function FitControls({ origin, onFitted }: { origin: [number, number]; onFitted:
       y: Math.min(y, -origin[1] * zoom + OUTSIDE_PX),
       zoom,
     });
-  }, [flow, origin]);
+  }, [flow, origin, empty]);
 
+  // Nodes must be measured before they can be fitted; an empty diagram has none.
   const initialized = useNodesInitialized();
   const done = useRef(false);
   useEffect(() => {
-    if (initialized && !done.current) {
+    if ((initialized || empty) && !done.current) {
       done.current = true;
       void fit().then(onFitted);
     }
-  }, [initialized, fit, onFitted]);
+  }, [initialized, empty, fit, onFitted]);
 
   return (
     <Controls showInteractive={false} showFitView={false}>

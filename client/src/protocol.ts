@@ -102,6 +102,8 @@ export interface DiagramMessage {
   /** How the request changed the file (edits, restore), or null. */
   change: Change | null;
   palette: PaletteEntry[];
+  /** The names in the shown type's `extends` clause. */
+  superTypes: string[];
 }
 
 /** The text of a file before and after a change. */
@@ -274,6 +276,39 @@ export interface AddExternalFunctionRequest {
   output: ParameterSpec | null;
 }
 
+/** Rename a diagram type or external function and its uses; answered with the shown type (renamed). */
+export interface RenameTypeRequest {
+  type: 'renameType';
+  file: string;
+  diagramType: string | null;
+  typeName: string;
+  name: string;
+}
+
+/** Delete an unused diagram type or external function; answered with the shown type (or the first). */
+export interface DeleteTypeRequest {
+  type: 'deleteType';
+  file: string;
+  diagramType: string | null;
+  typeName: string;
+}
+
+/** Add `diagramtype <name> extends <superType> {}`; answered with the new type. */
+export interface AddSubtypeRequest {
+  type: 'addSubtype';
+  file: string;
+  superType: string;
+  name: string;
+}
+
+/** Set a diagram type's `extends` clause. */
+export interface SetSuperTypesRequest {
+  type: 'setSuperTypes';
+  file: string;
+  typeName: string;
+  superTypes: string[];
+}
+
 export type ClientMessage =
   | OpenRequest
   | MoveRequest
@@ -288,6 +323,10 @@ export type ClientMessage =
   | AutoLayoutRequest
   | AddDiagramTypeRequest
   | AddExternalFunctionRequest
+  | RenameTypeRequest
+  | DeleteTypeRequest
+  | AddSubtypeRequest
+  | SetSuperTypesRequest
   | RestoreRequest;
 
 export function webSocketUrl(): string {

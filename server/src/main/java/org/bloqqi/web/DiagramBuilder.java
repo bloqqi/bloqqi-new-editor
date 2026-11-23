@@ -72,7 +72,7 @@ public final class DiagramBuilder {
 		problems.addAll(file.semanticErrors());
 		if (!file.isParsed()) {
 			return new Diagram(file.fileName(), null, List.of(), List.of(), List.of(), problems,
-					DiagramEdits.readOnlyReason(file), List.of());
+					DiagramEdits.readOnlyReason(file), List.of(), List.of());
 		}
 
 		CompilationUnit cu = file.compilationUnit();
@@ -84,11 +84,11 @@ public final class DiagramBuilder {
 						"No diagram type " + diagramTypeName + " in " + file.fileName());
 			}
 			return new Diagram(file.fileName(), null, names, List.of(), List.of(), problems,
-					DiagramEdits.readOnlyReason(file), List.of());
+					DiagramEdits.readOnlyReason(file), List.of(), List.of());
 		}
 		Diagram d = new Builder(dt).build(file.fileName(), names, problems, DiagramEdits.readOnlyReason(file));
 		return new Diagram(d.file(), d.diagramType(), d.diagramTypes(), d.nodes(), d.edges(), d.problems(),
-				d.readOnly(), palette(file, dt));
+				d.readOnly(), palette(file, dt), superTypes(dt));
 	}
 
 	/**
@@ -214,7 +214,7 @@ public final class DiagramBuilder {
 						largeMarker));
 			}
 			result.addAll(literals.values());
-			return new Diagram(fileName, dt.name(), names, result, edges, problems, readOnly, List.of());
+			return new Diagram(fileName, dt.name(), names, result, edges, problems, readOnly, List.of(), List.of());
 		}
 
 		DiagramType diagramType() {
@@ -417,6 +417,15 @@ public final class DiagramBuilder {
 			}
 		}
 		return entries;
+	}
+
+	/** The names in a type's {@code extends} clause. */
+	private static List<String> superTypes(DiagramType dt) {
+		List<String> names = new ArrayList<>();
+		for (int i = 0; i < dt.getNumSuperType(); i++) {
+			names.add(dt.getSuperType(i).getID());
+		}
+		return names;
 	}
 
 	private static boolean inPalette(TypeDecl td) {

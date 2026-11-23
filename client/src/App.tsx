@@ -3,7 +3,8 @@ import { Canvas } from './Canvas';
 import { Dialogs } from './Dialogs';
 import { EditingContext, type Editing } from './editing';
 import type { FlowEdgeType } from './FlowEdge';
-import { edgeMenu, newMenu, nodeMenu, paneMenu, type MenuContext } from './menus';
+import { edgeMenu, newMenu, nodeMenu, paletteMenu, paneMenu, type MenuContext } from './menus';
+import type { PaletteEntry } from './protocol';
 import type { DiagramFlowNode } from './nodes';
 import { Palette } from './Palette';
 import { useRenameKey, useUndoRedoKeys } from './shortcuts';
@@ -64,8 +65,15 @@ export function App() {
         autoLayout: () => {
           if (diagram.diagramType) send({ type: 'autoLayout', file: diagram.file, diagramType: diagram.diagramType });
         },
+        fileEditable,
+        renameType: dialogs.renameType,
+        newSubtype: dialogs.newSubtype,
+        editSuperTypes: dialogs.editSuperTypes,
+        // Answered with the shown type, or the first one if the shown one was deleted.
+        deleteType: (typeName) =>
+          send({ type: 'deleteType', file: diagram.file, diagramType: diagram.diagramType, typeName }),
       },
-    [diagram, editable, flow.literalConnections, flow.deleteItems, dialogs.editNode, open, send],
+    [diagram, editable, fileEditable, flow.literalConnections, flow.deleteItems, dialogs, open, send],
   );
   const { openMenu } = dialogs;
   const onNodeContextMenu = useCallback(
@@ -85,7 +93,16 @@ export function App() {
   const onPaneContextMenu = useCallback(
     (e: MouseEvent | React.MouseEvent) => {
       e.preventDefault();
-      if (menuContext?.diagram.diagramType) openMenu({ x: e.clientX, y: e.clientY }, paneMenu(menuContext));
+      const at = { x: e.clientX, y: e.clientY };
+      if (menuContext?.diagram.diagramType) openMenu(at, paneMenu(menuContext, at));
+    },
+    [menuContext, openMenu],
+  );
+  const onPaletteContextMenu = useCallback(
+    (e: React.MouseEvent, entry: PaletteEntry) => {
+      e.preventDefault();
+      const at = { x: e.clientX, y: e.clientY };
+      if (menuContext) openMenu(at, paletteMenu(entry, menuContext, at));
     },
     [menuContext, openMenu],
   );
@@ -141,6 +158,7 @@ export function App() {
             entries={diagram.palette}
             editable={editable}
             onDragTool={(tool) => dialogs.setDraggingLiteral(tool === 'literal')}
+            onEntryContextMenu={onPaletteContextMenu}
           />
         )}
         <main className="canvas" data-fitted={fittedKey === diagramKey}>
@@ -174,7 +192,7 @@ export function App() {
             />
           </EditingContext.Provider>
         </main>
-        <Dialogs dialogs={dialogs} busy={server.pendingCount > 0} />
+        <Dialogs dialogs={dialogs} diagram={diagram} busy={server.pendingCount > 0} />
       </div>
 
       {diagram && diagram.problems.length > 0 && (

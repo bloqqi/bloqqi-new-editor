@@ -643,6 +643,68 @@ test.describe.serial('moving nodes', () => {
     await expect(page.getByTestId('palette-Log')).toContainText('external');
     expect(readFileSync(dragFile, 'utf8')).toContain('external Print(in: Int);\nexternal Log(in1: Int, level: Real => ok: Bool);\n');
   });
+
+  // Type management (still Drag.dia).
+
+  async function paneMenu(page: Page) {
+    const pane = (await page.locator('.react-flow__pane').boundingBox())!;
+    await page.mouse.click(pane.x + pane.width - 40, pane.y + pane.height - 40, { button: 'right' });
+  }
+
+  test('renaming the shown type renames its uses, and the view follows', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Acc');
+    await paneMenu(page);
+    await page.getByRole('menuitem', { name: 'Rename Acc…' }).click();
+    const name = page.getByTestId('prompt-form').getByLabel('Name');
+    await expect(name).toHaveValue('Acc');
+    await name.fill('Accumulator');
+    await name.press('Enter');
+
+    await expect(page.getByTestId('type-select')).toHaveValue('Accumulator');
+    await expect(page).toHaveURL(/type=Accumulator/);
+    const text = readFileSync(dragFile, 'utf8');
+    expect(text).toContain('diagramtype Accumulator(');
+    expect(text).toContain('acc1: Accumulator;');
+
+    await page.keyboard.press('Control+z');
+    await expect.poll(() => readFileSync(dragFile, 'utf8')).toContain('acc1: Acc;');
+  });
+
+  test('a new subtype from the palette; its super types can be changed', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Main');
+    await page.getByTestId('palette-Acc').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'New subtype of Acc…' }).click();
+    const name = page.getByTestId('prompt-form').getByLabel('Name');
+    await name.fill('Acc2');
+    await name.press('Enter');
+
+    await expect(page.getByTestId('type-select')).toHaveValue('Acc2');
+    await expect(node(page, 'Acc::sum')).toBeVisible(); // inherited
+    expect(readFileSync(dragFile, 'utf8')).toContain('diagramtype Acc2 extends Acc {\n}\n');
+
+    await paneMenu(page);
+    await page.getByRole('menuitem', { name: 'Super types…' }).click();
+    const form = page.getByTestId('super-types-form');
+    await expect(form.getByLabel('Acc', { exact: true })).toBeChecked();
+    await form.getByLabel('Acc', { exact: true }).uncheck();
+    await form.getByRole('button', { name: 'Apply' }).click();
+    await expect(form).toHaveCount(0);
+    await expect(page.locator('.react-flow__node')).toHaveCount(0);
+    expect(readFileSync(dragFile, 'utf8')).toContain('diagramtype Acc2 {\n}\n');
+  });
+
+  test('types in use cannot be deleted; deleting the shown type shows another', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Acc2');
+    await page.getByTestId('palette-Acc').click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Delete Acc' }).click();
+    await expect(page.getByRole('alert')).toContainText('Cannot delete Acc: it is used in Main');
+
+    await paneMenu(page);
+    await page.getByRole('menuitem', { name: 'Delete Acc2' }).click();
+    await expect(page.getByTestId('type-select')).toHaveValue('Main');
+    await expect(page.getByTestId('type-select').locator('option', { hasText: 'Acc2' })).toHaveCount(0);
+    expect(readFileSync(dragFile, 'utf8')).not.toContain('Acc2');
+  });
 });
 
 test('the palette lists the types a block can be added of', async ({ page }) => {

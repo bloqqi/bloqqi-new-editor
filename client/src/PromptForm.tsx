@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 
 /** What a one-field form edits: a node's name, a literal's value, or a new diagram type's name. */
 export interface PromptRequest {
-  kind: 'rename' | 'literalValue' | 'newDiagramType';
-  /** The node (renamed) or literal (new value); unused for a new diagram type. */
+  kind: 'rename' | 'literalValue' | 'newDiagramType' | 'renameType' | 'newSubtype';
+  /** The node (rename), literal (literalValue), type (renameType) or super type (newSubtype). */
   id: string;
   initial: string;
   /** Where the form appears (client coordinates). */
@@ -37,6 +37,8 @@ export function PromptForm({
     rename: { title: `Rename ${request.initial}`, label: 'Name', button: 'Rename', aria: 'Rename' },
     literalValue: { title: 'Change value', label: 'Value', button: 'Change', aria: 'Change value' },
     newDiagramType: { title: 'New diagram type', label: 'Name', button: 'Create', aria: 'New diagram type' },
+    renameType: { title: `Rename type ${request.id}`, label: 'Name', button: 'Rename', aria: 'Rename type' },
+    newSubtype: { title: `New subtype of ${request.id}`, label: 'Name', button: 'Create', aria: 'New subtype' },
   }[request.kind];
   const left = Math.min(request.screen.x, window.innerWidth - 260);
   const top = Math.max(8, Math.min(request.screen.y, window.innerHeight - 170));
