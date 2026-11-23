@@ -56,7 +56,8 @@ public final class DiagramSocket implements Session.Listener.AutoDemanding {
 			}
 			String json;
 			synchronized (BloqqiLoader.COMPILER_LOCK) {
-				json = Protocol.diagram(handle(request));
+				Answer answer = handle(request);
+				json = Protocol.diagram(answer.diagram(), answer.change());
 			}
 			send(json);
 		} catch (IllegalArgumentException | IllegalStateException e) {
@@ -67,11 +68,16 @@ public final class DiagramSocket implements Session.Listener.AutoDemanding {
 		}
 	}
 
+	/** The diagram to send, and how the request changed the file (null if it did not). */
+	private record Answer(Diagram diagram, Protocol.Change change) {
+	}
+
 	/** Handles a request; the caller holds the compiler lock. */
-	private Diagram handle(Protocol.Request request) throws IOException {
+	private Answer handle(Protocol.Request request) throws IOException {
 		LoadedFile file = workspace.load(request.file());
 		return switch (request) {
-			case Protocol.OpenRequest open -> DiagramBuilder.build(file, open.diagramType());
+			case Protocol.OpenRequest open -> new Answer(DiagramBuilder.build(file, open.diagramType()), null);
+			case Protocol.RestoreRequest restore -> restore(file, restore);
 			case Protocol.MoveRequest move ->
 				save(file, move.diagramType(), DiagramEdits.moveNodes(file, move.diagramType(), move.moves()));
 			case Protocol.ConnectRequest connect -> save(file, connect.diagramType(),
@@ -82,9 +88,27 @@ public final class DiagramSocket implements Session.Listener.AutoDemanding {
 	}
 
 	/** Writes an edit's new text and answers with the diagram built from it. */
-	private Diagram save(LoadedFile file, String diagramType, String text) throws IOException {
+	private Answer save(LoadedFile file, String diagramType, String text) throws IOException {
 		workspace.write(file.fileName(), text);
-		return DiagramBuilder.build(BloqqiLoader.load(file.fileName(), text), diagramType);
+		Diagram d = DiagramBuilder.build(BloqqiLoader.load(file.fileName(), text), diagramType);
+		return new Answer(d, new Protocol.Change(file.source(), text));
+	}
+
+	/**
+	 * Undo/redo: puts back an earlier text of the file, if the file has not
+	 * changed since. The text was valid when it was written, so it is not
+	 * checked again; if the shown diagram type is not in it, the first one is shown.
+	 */
+	private Answer restore(LoadedFile file, Protocol.RestoreRequest restore) throws IOException {
+		LoadedFile restored = BloqqiLoader.load(file.fileName(), restore.text());
+		Diagram d;
+		try {
+			d = DiagramBuilder.build(restored, restore.diagramType());
+		} catch (IllegalArgumentException noSuchType) {
+			d = DiagramBuilder.build(restored, null);
+		}
+		String before = workspace.replace(file.fileName(), restore.expected(), restore.text());
+		return new Answer(d, new Protocol.Change(before, restore.text()));
 	}
 
 	@Override

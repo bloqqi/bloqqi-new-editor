@@ -21,7 +21,11 @@ import com.google.gson.JsonParser;
  *                    "source":{node,handle}, "target":{node,handle}}
  * client -> server  {"type":"delete", "file", "diagramType", "edges":[id,...]}
  *                   (edits write the file and are answered with the new "diagram",
- *                    or with an "error" and the file unchanged)
+ *                    whose "change" is {before, after}: the file's text before and
+ *                    after the edit; or with an "error" and the file unchanged)
+ * client -> server  {"type":"restore", "file", "diagramType", "text", "expected"}
+ *                   (undo/redo: writes "text" if the file still contains "expected";
+ *                    answered with the "diagram" and its "change", or an "error")
  * server -> client  {"type":"diagram", "file", "diagramType", "diagramTypes":[...],
  *                    "nodes":[{id,kind,label,typeName,inherited,inlined,error,x,y,width,height,
  *                              inPorts:[{name,typeName,y,connectable}], outPorts:[...],
@@ -29,7 +33,8 @@ import com.google.gson.JsonParser;
  *                    "edges":[{id,source,sourceHandle,target,targetHandle,
  *                              inherited,deletable,error,fromLiteral,intercept,largeMarker}],
  *                    "problems":[{line,column,message}],
- *                    "readOnly": null or why the diagram cannot be edited}
+ *                    "readOnly": null or why the diagram cannot be edited,
+ *                    "change": null, or {before, after} if the request changed the file}
  * server -> client  {"type":"error", "message"}
  * </pre>
  *
@@ -44,7 +49,7 @@ final class Protocol {
 	}
 
 	/** A client -> server message. */
-	sealed interface Request permits OpenRequest, MoveRequest, ConnectRequest, DeleteRequest {
+	sealed interface Request permits OpenRequest, MoveRequest, ConnectRequest, DeleteRequest, RestoreRequest {
 		String file();
 	}
 
@@ -63,6 +68,14 @@ final class Protocol {
 
 	/** Delete connections (by edge id) and save the file. */
 	record DeleteRequest(String file, String diagramType, List<String> edges) implements Request {
+	}
+
+	/** Undo/redo: replace the file's text with {@code text} if it is still {@code expected}. */
+	record RestoreRequest(String file, String diagramType, String text, String expected) implements Request {
+	}
+
+	/** How a request changed a file: its text before and after. */
+	record Change(String before, String after) {
 	}
 
 	/**
@@ -113,6 +126,10 @@ final class Protocol {
 			}
 			return new DeleteRequest(string(o, "file"), required(o, "diagramType"), ids);
 		}
+		if ("restore".equals(type)) {
+			return new RestoreRequest(string(o, "file"), string(o, "diagramType"),
+					required(o, "text"), required(o, "expected"));
+		}
 		return null;
 	}
 
@@ -124,6 +141,11 @@ final class Protocol {
 	}
 
 	static String diagram(Diagram d) {
+		return diagram(d, null);
+	}
+
+	/** A diagram, with the change that the request made to the file (or null). */
+	static String diagram(Diagram d, Change change) {
 		JsonObject o = new JsonObject();
 		o.addProperty("type", "diagram");
 		o.addProperty("file", d.file());
@@ -177,6 +199,14 @@ final class Protocol {
 		}
 		o.add("problems", problems);
 		o.addProperty("readOnly", d.readOnly());
+		if (change == null) {
+			o.add("change", com.google.gson.JsonNull.INSTANCE);
+		} else {
+			JsonObject c = new JsonObject();
+			c.addProperty("before", change.before());
+			c.addProperty("after", change.after());
+			o.add("change", c);
+		}
 		return GSON.toJson(o);
 	}
 

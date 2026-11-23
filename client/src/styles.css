@@ -51,9 +51,15 @@ body,
   margin-right: 8px;
 }
 
-.toolbar select {
+.toolbar select,
+.toolbar button {
   font: inherit;
-  padding: 2px 4px;
+  padding: 2px 8px;
+}
+
+.toolbar__group {
+  display: inline-flex;
+  gap: 4px;
 }
 
 .status {

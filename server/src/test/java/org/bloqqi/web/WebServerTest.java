@@ -161,6 +161,61 @@ public class WebServerTest {
 	}
 
 	@Test
+	public void editsReportTheirChangeAndCanBeUndoneAndRedone() throws Exception {
+		Path dir = temp.newFolder("undo").toPath();
+		Path file = dir.resolve("TwoCounters.dia");
+		Files.copy(Examples.dir().resolve("TwoCounters.dia"), file);
+		String original = Files.readString(file);
+		stop();
+		clients.clear();
+		server = new WebServer(0, new Workspace(dir), null);
+		server.start();
+
+		Client client = new Client();
+		client.next(); // workspace
+		client.open("TwoCounters.dia", "Acc");
+		assertTrue("opening changes nothing", client.next().get("change").isJsonNull());
+
+		client.socket.sendText("{\"type\":\"move\",\"file\":\"TwoCounters.dia\",\"diagramType\":\"Acc\","
+				+ "\"nodes\":[{\"id\":\"add\",\"x\":200,\"y\":100}]}", true);
+		JsonObject change = client.next().getAsJsonObject("change");
+		assertEquals(original, change.get("before").getAsString());
+		String moved = Files.readString(file);
+		assertEquals(moved, change.get("after").getAsString());
+
+		// Undo: back to the text before the move, if the file still has the text after it.
+		client.socket.sendText(restore("Acc", original, moved), true);
+		JsonObject undone = client.next();
+		assertEquals(undone.toString(), "diagram", undone.get("type").getAsString());
+		assertEquals(original, Files.readString(file));
+		assertEquals(moved, undone.getAsJsonObject("change").get("before").getAsString());
+
+		// Redo.
+		client.socket.sendText(restore("Acc", moved, original), true);
+		assertEquals("diagram", client.next().get("type").getAsString());
+		assertEquals(moved, Files.readString(file));
+
+		// Changed elsewhere in the meantime: undo is refused and the file is left alone.
+		String external = moved + "\n// edited elsewhere\n";
+		Files.writeString(file, external);
+		client.socket.sendText(restore("Acc", original, moved), true);
+		JsonObject refused = client.next();
+		assertEquals("error", refused.get("type").getAsString());
+		assertTrue(refused.get("message").getAsString().contains("has been changed since"));
+		assertEquals(external, Files.readString(file));
+	}
+
+	private static String restore(String diagramType, String text, String expected) {
+		JsonObject o = new JsonObject();
+		o.addProperty("type", "restore");
+		o.addProperty("file", "TwoCounters.dia");
+		o.addProperty("diagramType", diagramType);
+		o.addProperty("text", text);
+		o.addProperty("expected", expected);
+		return o.toString();
+	}
+
+	@Test
 	public void badRequestGivesError() throws Exception {
 		Client client = new Client();
 		client.next(); // workspace

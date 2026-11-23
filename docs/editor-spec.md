@@ -758,6 +758,10 @@ file.
    `elkjs`? Must layouts be deterministic and reproducible on the server?
 9. **Undo/redo model.** Should undo be a server-side command stack (as today,
    with diagram-type rename not undoable)? Is it per user or per file?
+   *Answered:* per browser tab and per file, kept in the client (the server is
+   stateless). Each entry is the file's text before and after an edit; undo
+   and redo restore a text only if the file has not changed since, so they
+   never overwrite edits made elsewhere. The history ends with the tab.
 10. **Concurrency.** Single user per file, or several clients on one model?
     Should the server watch for external text edits and reload?
 11. **Types in dialogs.** Parameters and variables are limited to `Int`, `Bool`

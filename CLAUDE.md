@@ -42,6 +42,12 @@
 - Edits are checked by reparsing before anything is written; an edit that adds
   syntax errors or more semantic errors is refused. Files with syntax errors
   are not edited. Writes go through a temp file and an atomic move.
+- Undo/redo lives in the browser tab (`client/src/history.ts`), per file; the
+  server stays stateless. Every edit's answer carries `change: {before, after}`
+  (the file's text); undo sends `restore` with `text = before`,
+  `expected = after` (redo the other way round), and the server writes it only
+  if the file still equals `expected` (`Workspace.replace`); otherwise it
+  refuses and the client clears that file's history.
 - Local and single-user for now. Compiler access is serialised by one global
   lock (see Gotchas).
 

@@ -59,6 +59,24 @@ public final class Workspace {
 		}
 	}
 
+	/**
+	 * Replaces the contents of a file, but only if it still contains
+	 * {@code expected}: undo and redo must not overwrite changes made elsewhere
+	 * (a text editor, another tab) since the edit they revert or repeat.
+	 *
+	 * @return the replaced text (equal to {@code expected})
+	 * @throws IllegalArgumentException if the file has other contents
+	 */
+	public String replace(String fileName, String expected, String text) throws IOException {
+		String current = Files.readString(resolve(fileName), StandardCharsets.UTF_8);
+		if (!current.equals(expected)) {
+			throw new IllegalArgumentException(fileName
+					+ " has been changed since (in another editor or tab), so the change cannot be undone or redone");
+		}
+		write(fileName, text);
+		return current;
+	}
+
 	private Path resolve(String fileName) {
 		if (fileName == null
 				|| !fileName.endsWith(".dia")

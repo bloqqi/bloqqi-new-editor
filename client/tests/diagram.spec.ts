@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 
@@ -334,6 +334,71 @@ test.describe.serial('moving nodes', () => {
     await page.getByRole('button', { name: 'Delete literal', exact: true }).click();
     await expect(literal).toHaveCount(0);
     expect(readFileSync(dragFile, 'utf8')).not.toContain('connect(2, acc2.in);');
+  });
+
+  // Undo/redo (still Drag.dia; the last test changes the file from outside).
+
+  test('undo and redo a move with the toolbar buttons', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Acc');
+    const undo = page.getByTestId('undo');
+    const redo = page.getByTestId('redo');
+    await expect(undo).toBeDisabled(); // a new tab has no history
+    await expect(redo).toBeDisabled();
+
+    const before = readFileSync(dragFile, 'utf8');
+    await drag(page, 'add', 30, 40);
+    await expect.poll(() => readFileSync(dragFile, 'utf8')).not.toBe(before);
+    const moved = readFileSync(dragFile, 'utf8');
+    await expect(undo).toBeEnabled();
+
+    await undo.click();
+    await expect.poll(() => readFileSync(dragFile, 'utf8')).toBe(before);
+    await expect(undo).toBeDisabled();
+    await expect(redo).toBeEnabled();
+
+    await redo.click();
+    await expect.poll(() => readFileSync(dragFile, 'utf8')).toBe(moved);
+    await expect(redo).toBeDisabled();
+    await expect(undo).toBeEnabled();
+  });
+
+  test('undo and redo a deleted connection with the keyboard', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Acc');
+    const before = readFileSync(dragFile, 'utf8');
+    expect(before).toContain('connect(add.out, out);');
+    // Click just before out's input: near add's output, the connections to
+    // out and to state overlap.
+    const target = (await handle(page, 'out', 'in').boundingBox())!;
+    await page.mouse.click(target.x - 8, target.y + target.height / 2);
+    await expect(edge(page, 'add.out:out->out.in')).toHaveClass(/selected/);
+    await page.keyboard.press('Delete');
+    await expect(edge(page, 'add.out:out->out.in')).toHaveCount(0);
+
+    await page.keyboard.press('Control+z');
+    await expect(edge(page, 'add.out:out->out.in')).toHaveCount(1);
+    expect(readFileSync(dragFile, 'utf8')).toBe(before);
+
+    await page.keyboard.press('Control+Shift+z');
+    await expect(edge(page, 'add.out:out->out.in')).toHaveCount(0);
+    await page.keyboard.press('Control+z');
+    await expect(edge(page, 'add.out:out->out.in')).toHaveCount(1);
+  });
+
+  test('undo is refused if the file was changed elsewhere', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Acc');
+    const before = readFileSync(dragFile, 'utf8');
+    await drag(page, 'add', 20, 20);
+    await expect.poll(() => readFileSync(dragFile, 'utf8')).not.toBe(before);
+
+    // Someone edits the file in a text editor.
+    const external = readFileSync(dragFile, 'utf8') + '// edited elsewhere\n';
+    writeFileSync(dragFile, external);
+
+    await page.getByTestId('undo').click();
+    await expect(page.getByRole('alert')).toContainText('has been changed since');
+    await expect(page.getByRole('alert')).toContainText('undo history of Drag.dia has been cleared');
+    await expect(page.getByTestId('undo')).toBeDisabled();
+    expect(readFileSync(dragFile, 'utf8')).toBe(external);
   });
 });
 

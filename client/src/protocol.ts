@@ -87,6 +87,14 @@ export interface DiagramMessage {
   problems: Problem[];
   /** Why the diagram cannot be edited (e.g. the file has syntax errors), or null. */
   readOnly: string | null;
+  /** How the request changed the file (edits, restore), or null. */
+  change: Change | null;
+}
+
+/** The text of a file before and after a change. */
+export interface Change {
+  before: string;
+  after: string;
 }
 
 export interface ErrorMessage {
@@ -137,7 +145,19 @@ export interface DeleteRequest {
   edges: string[];
 }
 
-export type ClientMessage = OpenRequest | MoveRequest | ConnectRequest | DeleteRequest;
+/**
+ * Undo/redo: replace the file's text with `text` if it still contains
+ * `expected`; otherwise the server answers with an error and changes nothing.
+ */
+export interface RestoreRequest {
+  type: 'restore';
+  file: string;
+  diagramType: string | null;
+  text: string;
+  expected: string;
+}
+
+export type ClientMessage = OpenRequest | MoveRequest | ConnectRequest | DeleteRequest | RestoreRequest;
 
 export function webSocketUrl(): string {
   const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';

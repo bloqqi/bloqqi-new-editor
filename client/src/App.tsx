@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import {
   applyEdgeChanges,
   applyNodeChanges,
@@ -12,6 +12,7 @@ import {
 import { Canvas, type Extent } from './Canvas';
 import { canConnect } from './connections';
 import { EditingContext, type Editing } from './editing';
+import { UndoHistory } from './history';
 import { type FlowEdgeType } from './FlowEdge';
 import { type DiagramFlowNode } from './nodes';
 import {
@@ -35,6 +36,16 @@ function arrowColor(e: DiagramEdge): string {
 }
 
 type Status = 'connecting' | 'open' | 'reconnecting';
+
+/**
+ * What a request was for. The server answers requests in order, so a queue of
+ * these tells what each answer ("diagram" or "error") belongs to.
+ */
+type RequestKind = 'open' | 'edit' | 'undo' | 'redo';
+
+const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+const UNDO_KEYS = IS_MAC ? '⌘Z' : 'Ctrl+Z';
+const REDO_KEYS = IS_MAC ? '⇧⌘Z' : 'Ctrl+Shift+Z';
 
 /** Delay before reconnecting after the connection drops: doubles up to the maximum. */
 const RECONNECT_MIN_MS = 500;
@@ -147,8 +158,29 @@ export function App() {
   const [diagram, setDiagram] = useState<DiagramMessage | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const send = useCallback((message: ClientMessage) => {
-    socket.current?.send(JSON.stringify(message));
+  const history = useRef(new UndoHistory());
+  const [, historyChanged] = useReducer((n: number) => n + 1, 0);
+  const pending = useRef<{ kind: RequestKind; file: string }[]>([]);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  const sendRaw = useCallback((ws: WebSocket, message: ClientMessage, kind: RequestKind) => {
+    pending.current.push({ kind, file: message.file });
+    setPendingCount(pending.current.length);
+    ws.send(JSON.stringify(message));
+  }, []);
+
+  const send = useCallback(
+    (message: ClientMessage, kind: RequestKind = message.type === 'open' ? 'open' : 'edit') => {
+      if (socket.current) sendRaw(socket.current, message, kind);
+    },
+    [sendRaw],
+  );
+
+  /** The request that the next answer from the server belongs to. */
+  const answered = useCallback(() => {
+    const request = pending.current.shift();
+    setPendingCount(pending.current.length);
+    return request;
   }, []);
 
   const open = useCallback(
@@ -176,6 +208,9 @@ export function App() {
       const current = new WebSocket(webSocketUrl());
       ws = current;
       socket.current = current;
+      // Requests sent on an earlier connection will not be answered.
+      pending.current = [];
+      setPendingCount(0);
       current.onopen = () => {
         delay = RECONNECT_MIN_MS;
         setStatus('open');
@@ -197,20 +232,38 @@ export function App() {
             const params = new URLSearchParams(window.location.search);
             const file = params.get('file') ?? message.files[0];
             if (file) {
-              current.send(JSON.stringify({ type: 'open', file, diagramType: params.get('type') ?? undefined }));
+              sendRaw(current, { type: 'open', file, diagramType: params.get('type') ?? undefined }, 'open');
             }
             break;
           }
-          case 'diagram':
+          case 'diagram': {
+            const request = answered();
+            if (message.change && request) {
+              const h = history.current;
+              if (request.kind === 'undo') h.undone(message.file);
+              else if (request.kind === 'redo') h.redone(message.file);
+              else h.record(message.file, { diagramType: message.diagramType, ...message.change });
+              historyChanged();
+            }
             setDiagram(message);
             setError(null);
             updateUrl(message.file, message.diagramType);
             break;
-          case 'error':
-            setError(message.message);
-            // A refused move: put the nodes back where the file has them.
+          }
+          case 'error': {
+            const request = answered();
+            if (request && (request.kind === 'undo' || request.kind === 'redo')) {
+              // The file no longer is what the history expects (changed elsewhere).
+              history.current.clear(request.file);
+              historyChanged();
+              setError(`${message.message}. The undo history of ${request.file} has been cleared.`);
+            } else {
+              setError(message.message);
+            }
+            // A refused edit: put the nodes back where the file has them.
             setDiagram((d) => (d ? { ...d } : d));
             break;
+          }
         }
       };
     }
@@ -224,12 +277,55 @@ export function App() {
     window.addEventListener('online', reconnectNow);
     return () => {
       stopped = true;
+      pending.current = [];
       window.clearTimeout(retryTimer);
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('online', reconnectNow);
       ws?.close();
     };
-  }, []);
+  }, [sendRaw, answered]);
+
+  // Undo/redo of edits in the shown file (see history.ts). Not while a request
+  // is on its way: its answer may change the history.
+  const canUndo = status === 'open' && pendingCount === 0 && !!diagram && !!history.current.nextUndo(diagram.file);
+  const canRedo = status === 'open' && pendingCount === 0 && !!diagram && !!history.current.nextRedo(diagram.file);
+
+  const undo = useCallback(() => {
+    const entry = diagram && history.current.nextUndo(diagram.file);
+    if (!canUndo || !diagram || !entry) return;
+    send(
+      { type: 'restore', file: diagram.file, diagramType: entry.diagramType, text: entry.before, expected: entry.after },
+      'undo',
+    );
+  }, [canUndo, diagram, send]);
+
+  const redo = useCallback(() => {
+    const entry = diagram && history.current.nextRedo(diagram.file);
+    if (!canRedo || !diagram || !entry) return;
+    send(
+      { type: 'restore', file: diagram.file, diagramType: entry.diagramType, text: entry.after, expected: entry.before },
+      'redo',
+    );
+  }, [canRedo, diagram, send]);
+
+  // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y (⌘ on a Mac), except while typing in a field.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(IS_MAC ? e.metaKey : e.ctrlKey) || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((key === 'z' && e.shiftKey) || (key === 'y' && !IS_MAC)) {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [undo, redo]);
 
   // Nodes are controlled here so they can be dragged; every diagram from the
   // server (including the answer to a move) replaces them.
@@ -393,6 +489,14 @@ export function App() {
             ))}
           </select>
         </label>
+        <span className="toolbar__group">
+          <button type="button" data-testid="undo" onClick={undo} disabled={!canUndo} title={`Undo (${UNDO_KEYS})`}>
+            Undo
+          </button>
+          <button type="button" data-testid="redo" onClick={redo} disabled={!canRedo} title={`Redo (${REDO_KEYS})`}>
+            Redo
+          </button>
+        </span>
         <span className={`status status--${status}`} data-testid="status">
           {status === 'open' ? 'connected' : `${status}…`}
         </span>
