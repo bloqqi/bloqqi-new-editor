@@ -218,6 +218,8 @@
 		<copy file="${examples}/TwoCounters.dia" tofile="${e2e.workspace}/Drag.dia"/>
 		<!-- Likewise for the interception test, which edits a subtype (PTrack). -->
 		<copy file="${examples}/PLib.dia" tofile="${e2e.workspace}/Intercept.dia"/>
+		<!-- And for the parameter order test. -->
+		<copy file="${examples}/PLib.dia" tofile="${e2e.workspace}/Params.dia"/>
 	</target>
 
 	<!-- Started by Playwright (client/playwright.config.ts). -->

@@ -73,6 +73,10 @@
   header's parentheses from the remaining parameters' own text. Deleting a
   parameter or variable that is used elsewhere (e.g. `acc1.in` in another
   type) is refused by the reparse check.
+  `setParameters` (canvas or parameter menu "Parameters…", `ParametersForm`)
+  rewrites the header with the type's own parameters in a new order, from
+  their own text; ones left out are deleted as above. Inherited parameters
+  come first (super types' order) and are only listed.
 - Rename (`DiagramEdits.rename`): the declaration and every use in the file
   (`x`, `x.in1`, `P::x`, annotation keys, and port uses `blk.p` for a
   parameter) are found by walking all `VarUse`s and following `decl()`

@@ -23,6 +23,8 @@ export interface MenuContext {
   renameType: (typeName: string, at: Point) => void;
   newSubtype: (superType: string, at: Point) => void;
   editSuperTypes: (at: Point) => void;
+  /** The form for the order of the shown type's parameters. */
+  editParameters: (at: Point) => void;
   deleteType: (typeName: string) => void;
   intercept: (edge: string, atSource: boolean) => void;
 }
@@ -32,8 +34,8 @@ function readOnlyReason(c: MenuContext): string | null {
   return c.editable ? null : c.diagram.readOnly ?? 'Not connected';
 }
 
-/** Blocks: Rename…, Open <Type>, Delete; parameters and variables: Rename…, Delete; literals: Change value…, Delete. */
-export function nodeMenu(node: DiagramFlowNode, c: MenuContext): MenuItem[] {
+/** Blocks: Rename…, Open <Type>, Delete; parameters: Rename…, Parameters…, Delete; variables: Rename…, Delete; literals: Change value…, Delete. */
+export function nodeMenu(node: DiagramFlowNode, c: MenuContext, at: Point): MenuItem[] {
   const readOnly = readOnlyReason(c);
   if (node.type === 'literal') {
     const id = c.literalConnections.get(node.id);
@@ -56,6 +58,9 @@ export function nodeMenu(node: DiagramFlowNode, c: MenuContext): MenuItem[] {
       disabledReason: local ? null : `${typeName} is not a diagram type in ${c.diagram.file}`,
       onSelect: () => c.open(c.diagram.file, typeName),
     });
+  }
+  if (node.type === 'inParameter' || node.type === 'outParameter') {
+    items.push({ label: 'Parameters…', disabledReason: readOnly, onSelect: () => c.editParameters(at) });
   }
   items.push({
     label: 'Delete',
@@ -85,7 +90,7 @@ export function edgeMenu(edge: FlowEdgeType, c: MenuContext): MenuItem[] {
   ];
 }
 
-/** The empty canvas: Auto layout, and the shown type's Rename…, New subtype…, Super types…, Delete (last). */
+/** The empty canvas: Auto layout, and the shown type's Rename…, New subtype…, Super types…, Parameters…, Delete (last). */
 export function paneMenu(c: MenuContext, at: Point): MenuItem[] {
   const type = c.diagram.diagramType!;
   const items = typeItems(type, 'diagramType', c, at);
@@ -94,6 +99,7 @@ export function paneMenu(c: MenuContext, at: Point): MenuItem[] {
     { label: 'Auto layout', disabledReason: readOnlyReason(c), onSelect: c.autoLayout },
     ...items,
     { label: 'Super types…', disabledReason: fileReason(c), onSelect: () => c.editSuperTypes(at) },
+    { label: 'Parameters…', disabledReason: readOnlyReason(c), onSelect: () => c.editParameters(at) },
     del,
   ];
 }

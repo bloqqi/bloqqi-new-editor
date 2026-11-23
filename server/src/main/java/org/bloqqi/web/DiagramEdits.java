@@ -627,6 +627,75 @@ public final class DiagramEdits {
 		return newText;
 	}
 
+	/**
+	 * Sets the order of a type's own in- and out-parameters (old editor:
+	 * Diagram properties, Move up/down/Remove). The lists name the type's
+	 * local parameters in their new order; local parameters left out are
+	 * deleted as by {@link #delete} (with their connections and positions).
+	 * Inherited parameters cannot be reordered here: they come first, in the
+	 * super types' order. Only the text between the header's parentheses is
+	 * rewritten, from each parameter's own text.
+	 *
+	 * @throws IllegalArgumentException if a name is not a local parameter of that
+	 *         direction or is listed twice, or the edit adds errors
+	 */
+	public static String setParameters(LoadedFile file, String diagramTypeName, List<String> inParameters,
+			List<String> outParameters) {
+		requireEditable(file);
+		DiagramType dt = topLevelDiagramType(file, diagramTypeName);
+		List<String> localIns = parameterNames(dt.getLocalInParameterList());
+		List<String> localOuts = parameterNames(dt.getLocalOutParameterList());
+		Set<String> seen = new HashSet<>();
+		for (String name : inParameters) {
+			requireListed(name, localIns, "in-parameter", dt, seen);
+		}
+		for (String name : outParameters) {
+			requireListed(name, localOuts, "out-parameter", dt, seen);
+		}
+		List<String> removed = new ArrayList<>();
+		localIns.stream().filter(n -> !inParameters.contains(n)).forEach(removed::add);
+		localOuts.stream().filter(n -> !outParameters.contains(n)).forEach(removed::add);
+
+		LoadedFile current = file;
+		if (!removed.isEmpty()) {
+			current = check(file, delete(file, diagramTypeName, List.of(), removed));
+		}
+		if (inParameters.isEmpty() && outParameters.isEmpty()) {
+			return current.source();
+		}
+		DiagramType reordered = topLevelDiagramType(current, diagramTypeName);
+		SourceText source = new SourceText(current.source());
+		Map<String, String> texts = new HashMap<>();
+		for (ASTNode<?> p : positioned(reordered.getLocalInParameterList())) {
+			texts.put("in:" + ((org.bloqqi.compiler.ast.Parameter) p).name(), source.text(p));
+		}
+		for (ASTNode<?> p : positioned(reordered.getLocalOutParameterList())) {
+			texts.put("out:" + ((org.bloqqi.compiler.ast.Parameter) p).name(), source.text(p));
+		}
+		List<String> ins = inParameters.stream().map(n -> texts.get("in:" + n)).toList();
+		List<String> outs = outParameters.stream().map(n -> texts.get("out:" + n)).toList();
+		String inner = String.join(", ", ins)
+				+ (outs.isEmpty() ? "" : (ins.isEmpty() ? "=> " : " => ") + String.join(", ", outs));
+		Header h = header(source, reordered);
+		String newText = apply(current.source(), List.of(new TextEdit(h.lpar() + 1, h.rpar(), inner)));
+		check(file, newText);
+		return newText;
+	}
+
+	private static List<String> parameterNames(ASTNode<?> list) {
+		return positioned(list).stream().map(p -> ((org.bloqqi.compiler.ast.Parameter) p).name()).toList();
+	}
+
+	private static void requireListed(String name, List<String> locals, String kind, DiagramType dt, Set<String> seen) {
+		if (!locals.contains(name)) {
+			throw new IllegalArgumentException(name + " is not an " + kind + " declared in " + dt.name()
+					+ " (inherited parameters cannot be reordered here)");
+		}
+		if (!seen.add(name)) {
+			throw new IllegalArgumentException(name + " is listed twice");
+		}
+	}
+
 	/** A diagram type or external function declared in the file. */
 	private static TypeDecl localType(LoadedFile file, String name) {
 		for (TypeDecl td : file.compilationUnit().typeDecls()) {

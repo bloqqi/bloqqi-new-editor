@@ -39,6 +39,9 @@ import com.google.gson.JsonParser;
  *                   (both answered with the shown diagramType, renamed or, if deleted, the first)
  * client -> server  {"type":"addSubtype", "file", "superType", "name"}   (answered with the new type)
  * client -> server  {"type":"setSuperTypes", "file", "typeName", "superTypes":[...]}
+ * client -> server  {"type":"setParameters", "file", "diagramType", "inParameters":[...],
+ *                    "outParameters":[...]}   (the type's own parameters in their new order;
+ *                   those left out are deleted)
  * client -> server  {"type":"createFile", "file", "diagramType"}   (file: the new file; diagramType:
  *                   its first type, or null for an empty file; answered with the new file)
  * client -> server  {"type":"renameFile", "file", "newName", "diagramType"}   (answered with the renamed file)
@@ -84,7 +87,7 @@ final class Protocol {
 			permits OpenRequest, MoveRequest, ConnectRequest, DeleteRequest, AddBlockRequest, AddLiteralRequest,
 			AddVariableRequest, AddParameterRequest, RenameRequest, SetLiteralRequest, AutoLayoutRequest,
 			AddDiagramTypeRequest, AddExternalFunctionRequest, RenameTypeRequest, DeleteTypeRequest,
-			AddSubtypeRequest, SetSuperTypesRequest, CreateFileRequest, RenameFileRequest, DeleteFileRequest,
+			AddSubtypeRequest, SetSuperTypesRequest, SetParametersRequest, CreateFileRequest, RenameFileRequest, DeleteFileRequest,
 			InterceptRequest,
 			RestoreRequest {
 		String file();
@@ -162,6 +165,11 @@ final class Protocol {
 
 	/** Set the super types of a diagram type. */
 	record SetSuperTypesRequest(String file, String typeName, List<String> superTypes) implements Request {
+	}
+
+	/** Reorder (and delete) the shown type's own parameters. */
+	record SetParametersRequest(String file, String diagramType, List<String> inParameters,
+			List<String> outParameters) implements Request {
 	}
 
 	/** Create a file, optionally with a first, empty diagram type, and show it. */
@@ -288,6 +296,10 @@ final class Protocol {
 		}
 		if ("setSuperTypes".equals(type)) {
 			return new SetSuperTypesRequest(string(o, "file"), required(o, "typeName"), strings(o, "superTypes"));
+		}
+		if ("setParameters".equals(type)) {
+			return new SetParametersRequest(string(o, "file"), required(o, "diagramType"),
+					strings(o, "inParameters"), strings(o, "outParameters"));
 		}
 		if ("createFile".equals(type)) {
 			return new CreateFileRequest(required(o, "file"), string(o, "diagramType"));

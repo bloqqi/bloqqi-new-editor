@@ -24,6 +24,8 @@ export interface Dialogs {
   externalForm: Point | null;
   /** The form for the shown type's super types (where it opens). */
   superTypesForm: Point | null;
+  /** The form for the order of the shown type's parameters (where it opens). */
+  parametersForm: Point | null;
   /** The form for a new file (where it opens). */
   newFileForm: Point | null;
   /** Confirming that the shown file is to be deleted (where it opens). */
@@ -47,6 +49,7 @@ export interface Dialogs {
   renameType: (typeName: string, screen: Point) => void;
   newSubtype: (superType: string, screen: Point) => void;
   editSuperTypes: (screen: Point) => void;
+  editParameters: (screen: Point) => void;
   newFile: (screen: Point) => void;
   renameFile: (screen: Point) => void;
   deleteFile: (screen: Point) => void;
@@ -58,6 +61,7 @@ export interface Dialogs {
   submitPrompt: (value: string) => void;
   submitExternalFunction: (name: string, inputs: ParameterSpec[], output: ParameterSpec | null) => void;
   submitSuperTypes: (superTypes: string[]) => void;
+  submitParameters: (inParameters: string[], outParameters: string[]) => void;
   submitNewFile: (file: string, diagramType: string | null) => void;
   submitDeleteFile: () => void;
   /** Closes the open form. */
@@ -84,6 +88,7 @@ export function useDialogs({
   const [prompt, setPrompt] = useState<PromptRequest | null>(null);
   const [externalForm, setExternalForm] = useState<Point | null>(null);
   const [superTypesForm, setSuperTypesForm] = useState<Point | null>(null);
+  const [parametersForm, setParametersForm] = useState<Point | null>(null);
   const [newFileForm, setNewFileForm] = useState<Point | null>(null);
   const [deleteFileForm, setDeleteFileForm] = useState<Point | null>(null);
   const [interceptPick, setInterceptPick] = useState<{
@@ -102,6 +107,7 @@ export function useDialogs({
     setPrompt(null);
     setExternalForm(null);
     setSuperTypesForm(null);
+    setParametersForm(null);
     setNewFileForm(null);
     setDeleteFileForm(null);
     setFormError(null);
@@ -167,6 +173,11 @@ export function useDialogs({
   const editSuperTypes = useCallback((screen: Point) => {
     setFormError(null);
     setSuperTypesForm(screen);
+  }, []);
+
+  const editParameters = useCallback((screen: Point) => {
+    setFormError(null);
+    setParametersForm(screen);
   }, []);
 
   const newFile = useCallback((screen: Point) => {
@@ -319,9 +330,23 @@ export function useDialogs({
     [diagram, send],
   );
 
+  const submitParameters = useCallback(
+    (inParameters: string[], outParameters: string[]) => {
+      if (!diagram?.diagramType) return;
+      send(
+        { type: 'setParameters', file: diagram.file, diagramType: diagram.diagramType, inParameters, outParameters },
+        'form',
+      );
+    },
+    [diagram, send],
+  );
+
   return {
     menu,
     superTypesForm,
+    parametersForm,
+    editParameters,
+    submitParameters,
     newFileForm,
     deleteFileForm,
     interceptPick,

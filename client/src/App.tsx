@@ -71,6 +71,7 @@ export function App() {
         renameType: dialogs.renameType,
         newSubtype: dialogs.newSubtype,
         editSuperTypes: dialogs.editSuperTypes,
+        editParameters: dialogs.editParameters,
         // Answered with the shown type, or the first one if the shown one was deleted.
         intercept: dialogs.intercept,
         deleteType: (typeName) =>
@@ -82,7 +83,10 @@ export function App() {
   const onNodeContextMenu = useCallback(
     (e: React.MouseEvent, node: DiagramFlowNode) => {
       e.preventDefault();
-      if (menuContext) openMenu({ x: e.clientX, y: e.clientY }, nodeMenu(node, menuContext));
+      if (menuContext) {
+        const at = { x: e.clientX, y: e.clientY };
+        openMenu(at, nodeMenu(node, menuContext, at));
+      }
     },
     [menuContext, openMenu],
   );

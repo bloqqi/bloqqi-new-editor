@@ -169,6 +169,8 @@ public final class DiagramSocket implements Session.Listener.AutoDemanding {
 					DiagramEdits.deleteType(file, r.typeName()));
 			case Protocol.AddSubtypeRequest r -> save(file, r.name(),
 					DiagramEdits.addSubtype(file, r.superType(), r.name()));
+			case Protocol.SetParametersRequest r -> save(file, r.diagramType(),
+					DiagramEdits.setParameters(file, r.diagramType(), r.inParameters(), r.outParameters()));
 			case Protocol.SetSuperTypesRequest r -> save(file, r.typeName(),
 					DiagramEdits.setSuperTypes(file, r.typeName(), r.superTypes()));
 			case Protocol.InterceptRequest r -> save(file, r.diagramType(), DiagramEdits.intercept(file,

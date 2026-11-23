@@ -658,45 +658,59 @@ body,
 }
 
 /* The ordered list of super types (order matters). */
-.super-types {
+.ordered-list {
   margin: 0;
   padding-left: 22px;
   display: grid;
   gap: 4px;
 }
 
-.super-types__item {
+.ordered-list__item {
   padding-left: 2px;
 }
 
-.super-types__item::marker {
+.ordered-list__item::marker {
   color: var(--muted);
 }
 
-.super-types__item > * {
+.ordered-list__item > * {
   vertical-align: middle;
 }
 
-.super-types__name {
+.ordered-list__name {
   display: inline-block;
   min-width: 110px;
   margin-right: 6px;
 }
 
-.super-types__item button,
-.super-types__add button {
+.ordered-list__item--fixed {
+  color: var(--muted);
+}
+
+.ordered-list__type {
+  color: var(--muted);
+}
+
+.ordered-list__subtitle {
+  margin: 4px 0 0;
+  font-size: inherit;
+  font-weight: 600;
+}
+
+.ordered-list__item button,
+.ordered-list__add button {
   font: inherit;
   min-width: 26px;
   padding: 1px 6px;
   margin-right: 2px;
 }
 
-.super-types__add {
+.ordered-list__add {
   display: flex;
   gap: 6px;
 }
 
-.super-types__add select {
+.ordered-list__add select {
   flex: 1;
   min-width: 0;
   font: inherit;

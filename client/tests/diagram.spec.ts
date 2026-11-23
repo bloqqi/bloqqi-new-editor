@@ -149,23 +149,27 @@ test('reconnects and reopens the diagram when the connection drops', async ({ pa
   await expect(node(page, 'add')).toBeVisible();
 });
 
-const dragFile = resolve('..', 'build', 'e2e-workspace', 'Drag.dia');
-
 /**
- * Drag.dia's text. Retries briefly when the file seems to be missing: the
- * server saves by renaming a temporary file onto it, which is not atomic for
- * other processes on some shared folders (e.g. Docker Desktop on macOS).
+ * A file's text in the e2e workspace. Retries briefly when the file seems to
+ * be missing: the server saves by renaming a temporary file onto it, which is
+ * not atomic for other processes on some shared folders (e.g. Docker Desktop
+ * on macOS).
  */
-function readDrag(): string {
+function readWorkspaceFile(name: string): string {
+  const path = resolve('..', 'build', 'e2e-workspace', name);
   for (let attempt = 1; ; attempt++) {
     try {
-      return readFileSync(dragFile, 'utf8');
+      return readFileSync(path, 'utf8');
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== 'ENOENT' || attempt >= 50) throw e;
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
     }
   }
 }
+
+/** Drag.dia's text (see readWorkspaceFile). */
+const dragFile = resolve('..', 'build', 'e2e-workspace', 'Drag.dia');
+const readDrag = () => readWorkspaceFile('Drag.dia');
 
 /** Drags a node by (dx, dy) screen pixels with the mouse. */
 async function drag(page: Page, id: string, dx: number, dy: number) {
@@ -881,6 +885,62 @@ test('files can be created, renamed and deleted from the File menu', async ({ pa
 async function rightClickConnection(page: Page, sourceNode: string, sourceHandle: string) {
   const h = (await handle(page, sourceNode, sourceHandle).boundingBox())!;
   await page.mouse.click(h.x + h.width + 14, h.y + h.height / 2, { button: 'right' });
+}
+
+test("a type's own parameters can be reordered and removed; inherited ones come first", async ({ page }) => {
+  // Params.dia is a copy of PLib.dia that only this test edits.
+  const text = () => readWorkspaceFile('Params.dia');
+  await goto(page, '/?file=Params.dia&type=PTrack');
+  await node(page, 'Track').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Parameters…' }).click();
+  const form = page.getByTestId('parameters-form');
+  const ins = form.getByTestId('in-parameters').locator('li');
+  await expect(ins).toHaveText(['SP: Realfrom P', 'PV: Realfrom P', 'K: Realfrom P', 'Track: Bool↑↓×', 'TrackValue: Real↑↓×']);
+  await expect(form.getByTestId('out-parameters').locator('li')).toHaveText(['Out: Realfrom P']);
+  await expect(form.getByRole('button', { name: 'Apply' })).toBeDisabled();
+  await form.getByRole('button', { name: 'Move TrackValue up' }).click();
+  await expect(ins.nth(3)).toHaveText('TrackValue: Real↑↓×');
+  await form.getByRole('button', { name: 'Apply' }).click();
+  await expect(form).toHaveCount(0);
+  await expect.poll(text).toContain('diagramtype PTrack(TrackValue: Real, Track: Bool) extends P {');
+
+  // Removing one also deletes its connections.
+  await paneMenuAt(page);
+  await page.getByRole('menuitem', { name: 'Parameters…' }).click();
+  await expect(ins).toHaveText(['SP: Realfrom P', 'PV: Realfrom P', 'K: Realfrom P', 'TrackValue: Real↑↓×', 'Track: Bool↑↓×']);
+  await form.getByRole('button', { name: 'Remove Track', exact: true }).click();
+  await form.getByRole('button', { name: 'Apply' }).click();
+  await expect(form).toHaveCount(0);
+  await expect(node(page, 'Track')).toHaveCount(0);
+  await expect
+    .poll(text)
+    .toContain(
+      'diagramtype PTrack(TrackValue: Real) extends P {\n  SelReal_1;\n' +
+        '  intercept Out with SelReal_1.in2, SelReal_1.out;\n  connect(TrackValue, SelReal_1.in1);\n}',
+    );
+
+  // Undo restores both.
+  await page.getByTestId('undo').click();
+  await expect(node(page, 'Track')).toHaveCount(1);
+  await page.getByTestId('undo').click();
+  await expect.poll(text).toContain('diagramtype PTrack(Track: Bool, TrackValue: Real) extends P {');
+
+  // A parameter used elsewhere cannot be removed: the reason is shown in the form.
+  await page.getByTestId('type-select').selectOption('Rid');
+  await node(page, 'in').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Parameters…' }).click();
+  await form.getByRole('button', { name: 'Remove in', exact: true }).click();
+  await expect(form.getByTestId('in-parameters')).toHaveCount(0);
+  await expect(form).toContainText('None');
+  await form.getByRole('button', { name: 'Apply' }).click();
+  await expect(form.getByRole('alert')).toContainText('Rid.in was not found');
+  await form.getByRole('button', { name: 'Cancel' }).click();
+  await expect(form).toHaveCount(0);
+});
+
+async function paneMenuAt(page: Page) {
+  const pane = (await page.locator('.react-flow__pane').boundingBox())!;
+  await page.mouse.click(pane.x + pane.width - 40, pane.y + pane.height - 40, { button: 'right' });
 }
 
 test('an inherited connection can be intercepted in a subtype', async ({ page }) => {

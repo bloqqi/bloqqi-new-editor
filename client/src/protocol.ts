@@ -334,6 +334,15 @@ export interface SetSuperTypesRequest {
   superTypes: string[];
 }
 
+/** Reorder the shown type's own parameters; those left out are deleted (with their connections). */
+export interface SetParametersRequest {
+  type: 'setParameters';
+  file: string;
+  diagramType: string;
+  inParameters: string[];
+  outParameters: string[];
+}
+
 /** Create a file (`file` is the new name), with a first diagram type or empty; answered with it. */
 export interface CreateFileRequest {
   type: 'createFile';
@@ -387,6 +396,7 @@ export type ClientMessage =
   | DeleteTypeRequest
   | AddSubtypeRequest
   | SetSuperTypesRequest
+  | SetParametersRequest
   | CreateFileRequest
   | RenameFileRequest
   | DeleteFileRequest

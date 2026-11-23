@@ -258,6 +258,64 @@ public class NodeEditsTest {
 		assertRefused("not declared in PTrack", () -> DiagramEdits.delete(file, "PTrack", List.of(), List.of("P::SP")));
 	}
 
+	@Test
+	public void parametersCanBeReordered() {
+		String text = "diagramtype A(a: Int, b: Int => c: Int, d: Int) {\n  connect(a, c);\n  connect(b, d);\n}\n"
+				+ "diagramtype U {\n  x: A;\n}\n";
+		LoadedFile file = load("x.dia", text);
+		String after = DiagramEdits.setParameters(file, "A", List.of("b", "a"), List.of("d", "c"));
+		assertEquals(text.replace("A(a: Int, b: Int => c: Int, d: Int)", "A(b: Int, a: Int => d: Int, c: Int)"), after);
+		LoadedFile reparsed = load("x.dia", after);
+		assertCleanParse(reparsed);
+		// The order of the ports of blocks of that type follows.
+		DiagramNode x = nodes(reparsed, "U").get("x");
+		assertEquals(List.of("b", "a"), x.inPorts().stream().map(Diagram.DiagramPort::name).toList());
+		assertEquals(List.of("d", "c"), x.outPorts().stream().map(Diagram.DiagramPort::name).toList());
+	}
+
+	@Test
+	public void parametersLeftOutAreDeleted() {
+		String text = "diagramtype A(a: Int, b: Int => c: Int, d: Int) {\n  connect(a, c);\n  connect(b, d);\n}\n";
+		String after = DiagramEdits.setParameters(load("x.dia", text), "A", List.of("b"), List.of("d", "c"));
+		assertEquals("diagramtype A(b: Int => d: Int, c: Int) {\n  connect(b, d);\n}\n", after);
+		assertEquals("diagramtype A() {\n}\n",
+				DiagramEdits.setParameters(load("x.dia", text), "A", List.of(), List.of()));
+	}
+
+	@Test
+	public void reorderingKeepsHowParametersAreWritten() throws Exception {
+		LoadedFile file = load("InlineExample.dia", source("InlineExample.dia"));
+		String after = DiagramEdits.setParameters(file, "FeedForward", List.of("FV", "In", "Gain"), List.of("Out"));
+		assertTrue(after.contains("diagramtype FeedForward(Int FV, Int In, Int Gain => Int Out) {"));
+		assertCleanParse(load("InlineExample.dia", after));
+	}
+
+	@Test
+	public void onlyTheTypesOwnParametersCanBeReordered() throws Exception {
+		LoadedFile file = load("PLib.dia", source("PLib.dia"));
+		// PTrack(Track: Bool, TrackValue: Real) extends P: P's parameters come first.
+		String after = DiagramEdits.setParameters(file, "PTrack", List.of("TrackValue", "Track"), List.of());
+		assertTrue(after.contains("diagramtype PTrack(TrackValue: Real, Track: Bool) extends P {"));
+		List<String> ins = DiagramBuilder.build(load("PLib.dia", after), "PTrack").nodes().stream()
+				.filter(n -> n.kind().equals(Diagram.IN_PARAMETER)).map(DiagramNode::id).toList();
+		assertEquals(List.of("P::SP", "P::PV", "P::K", "TrackValue", "Track"), ins);
+
+		assertRefused("SP is not an in-parameter declared in PTrack",
+				() -> DiagramEdits.setParameters(file, "PTrack", List.of("SP", "Track", "TrackValue"), List.of()));
+		assertRefused("Track is not an out-parameter",
+				() -> DiagramEdits.setParameters(file, "PTrack", List.of("TrackValue"), List.of("Track")));
+		assertRefused("listed twice",
+				() -> DiagramEdits.setParameters(file, "PTrack", List.of("Track", "Track", "TrackValue"), List.of()));
+	}
+
+	@Test
+	public void parametersUsedElsewhereAreNotDeletedByReordering() throws Exception {
+		// TwoCounters' Main connects acc1.in.
+		LoadedFile file = load("TwoCounters.dia", source("TwoCounters.dia"));
+		assertRefused("acc1.in was not found",
+				() -> DiagramEdits.setParameters(file, "Acc", List.of(), List.of("out")));
+	}
+
 	/**
 	 * In every example and type: a variable and both kinds of parameter can be
 	 * added (everything else stays in place), and every deletable variable and

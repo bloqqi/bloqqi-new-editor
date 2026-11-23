@@ -5,6 +5,7 @@ import { ContextMenu } from './ContextMenu';
 import { ExternalFunctionForm } from './ExternalFunctionForm';
 import { PromptForm } from './PromptForm';
 import type { DiagramMessage } from './protocol';
+import { ParametersForm, type ParameterItem } from './ParametersForm';
 import { SuperTypesForm } from './SuperTypesForm';
 import type { Dialogs as DialogState } from './useDialogs';
 
@@ -52,6 +53,18 @@ export function Dialogs({
           onCancel={d.cancelForm}
         />
       )}
+      {d.parametersForm && diagram?.diagramType && (
+        <ParametersForm
+          typeName={diagram.diagramType}
+          inParameters={parameters(diagram, 'inParameter')}
+          outParameters={parameters(diagram, 'outParameter')}
+          screen={d.parametersForm}
+          error={d.formError}
+          busy={busy}
+          onSubmit={d.submitParameters}
+          onCancel={d.cancelForm}
+        />
+      )}
       {d.newFileForm && (
         <NewFileForm
           screen={d.newFileForm}
@@ -85,4 +98,14 @@ export function Dialogs({
       )}
     </>
   );
+}
+
+/** The shown type's in- or out-parameters, in port order (inherited ones, `Super::name`, first). */
+function parameters(diagram: DiagramMessage, kind: 'inParameter' | 'outParameter'): ParameterItem[] {
+  return diagram.nodes
+    .filter((n) => n.kind === kind)
+    .map((n) => {
+      const sep = n.id.lastIndexOf('::');
+      return { name: n.label, typeName: n.typeName, from: n.inherited && sep > 0 ? n.id.slice(0, sep) : null };
+    });
 }

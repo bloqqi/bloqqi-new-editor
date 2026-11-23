@@ -73,10 +73,10 @@ export function SuperTypesForm({
       {chosen.length === 0 ? (
         <p className="add-form__none">No super types</p>
       ) : (
-        <ol className="super-types" data-testid="super-types">
+        <ol className="ordered-list" data-testid="super-types">
           {chosen.map((t, i) => (
-            <li key={t} className="super-types__item">
-              <span className="super-types__name">{t}</span>
+            <li key={t} className="ordered-list__item">
+              <span className="ordered-list__name">{t}</span>
               <button
                 type="button"
                 onClick={() => move(i, -1)}
@@ -108,7 +108,7 @@ export function SuperTypesForm({
         </ol>
       )}
       {addable.length > 0 && (
-        <div className="super-types__add">
+        <div className="ordered-list__add">
           <select value={toAdd} onChange={(e) => setToAdd(e.target.value)} aria-label="Super type to add">
             {addable.map((t) => (
               <option key={t}>{t}</option>
