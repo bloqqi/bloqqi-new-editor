@@ -6,11 +6,13 @@ export function Toolbar({
   server,
   fileEditable,
   onNew,
+  onFileMenu,
 }: {
   server: Server;
   /** New types can be added to the file (connected, no syntax errors). */
   fileEditable: boolean;
   onNew: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onFileMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
   const { status, files, diagram, open } = server;
   return (
@@ -32,6 +34,15 @@ export function Toolbar({
           ))}
         </select>
       </label>
+      <button
+        type="button"
+        data-testid="file-menu"
+        onClick={onFileMenu}
+        disabled={status !== 'open'}
+        title="New, rename or delete a file"
+      >
+        File ▾
+      </button>
       <label>
         Diagram type{' '}
         <select

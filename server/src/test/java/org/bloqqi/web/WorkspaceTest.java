@@ -18,6 +18,44 @@ public class WorkspaceTest {
 	public TemporaryFolder temp = new TemporaryFolder();
 
 	@Test
+	public void filesCanBeCreatedRenamedAndDeleted() throws Exception {
+		Path dir = temp.newFolder().toPath();
+		Workspace ws = new Workspace(dir);
+		ws.create("A.dia", "diagramtype A {\n}\n");
+		assertEquals(List.of("A.dia"), ws.files());
+		assertEquals("diagramtype A {\n}\n", Files.readString(dir.resolve("A.dia")));
+		try (var stream = Files.list(dir)) {
+			assertEquals("no temporary files left", 1, stream.count());
+		}
+
+		ws.rename("A.dia", "My file-2.dia");
+		assertEquals(List.of("My file-2.dia"), ws.files());
+		ws.delete("My file-2.dia");
+		assertEquals(List.of(), ws.files());
+	}
+
+	@Test
+	public void newFileNamesAreChecked() throws Exception {
+		Path dir = temp.newFolder().toPath();
+		Workspace ws = new Workspace(dir);
+		ws.create("A.dia", "");
+		for (String bad : List.of("A.dia", "B", "B.txt", ".B.dia", "../B.dia", "x/B.dia", "B?.dia", "")) {
+			try {
+				ws.create(bad, "");
+				fail("expected rejection of " + bad);
+			} catch (IllegalArgumentException expected) {
+				// ok
+			}
+		}
+		try {
+			ws.rename("A.dia", "A.dia");
+			fail("expected rejection");
+		} catch (IllegalArgumentException expected) {
+			assertTrue(expected.getMessage().contains("already a file called A.dia"));
+		}
+	}
+
+	@Test
 	public void replaceOnlyWritesIfTheFileIsUnchanged() throws Exception {
 		Path dir = temp.newFolder().toPath();
 		Files.writeString(dir.resolve("A.dia"), "one");

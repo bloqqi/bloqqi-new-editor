@@ -88,7 +88,7 @@ public final class DiagramSocket implements Session.Listener.AutoDemanding {
 			String json;
 			synchronized (BloqqiLoader.COMPILER_LOCK) {
 				Answer answer = handle(request);
-				view = new View(request.file(), answer.diagram().diagramType(), answer.text());
+				view = new View(answer.diagram().file(), answer.diagram().diagramType(), answer.text());
 				json = Protocol.diagram(answer.diagram(), answer.change());
 			}
 			send(json);
@@ -109,6 +109,29 @@ public final class DiagramSocket implements Session.Listener.AutoDemanding {
 
 	/** Handles a request; the caller holds the compiler lock. */
 	private Answer handle(Protocol.Request request) throws IOException {
+		switch (request) {
+			case Protocol.CreateFileRequest r -> {
+				return createFile(r.file(), r.diagramType());
+			}
+			case Protocol.RenameFileRequest r -> {
+				workspace.rename(r.file(), r.newName());
+				LoadedFile renamed = workspace.load(r.newName());
+				return new Answer(buildOrFirst(renamed, r.diagramType()), null, renamed.source());
+			}
+			case Protocol.DeleteFileRequest r -> {
+				List<String> others = new java.util.ArrayList<>(workspace.files());
+				others.remove(r.file());
+				if (others.isEmpty()) {
+					throw new IllegalArgumentException("Cannot delete " + r.file() + ": it is the only file");
+				}
+				workspace.delete(r.file());
+				LoadedFile first = workspace.load(others.get(0));
+				return new Answer(DiagramBuilder.build(first, null), null, first.source());
+			}
+			default -> {
+				// Edits of an existing file, below.
+			}
+		}
 		LoadedFile file = workspace.load(request.file());
 		return switch (request) {
 			case Protocol.OpenRequest open ->
@@ -148,7 +171,41 @@ public final class DiagramSocket implements Session.Listener.AutoDemanding {
 					DiagramEdits.addSubtype(file, r.superType(), r.name()));
 			case Protocol.SetSuperTypesRequest r -> save(file, r.typeName(),
 					DiagramEdits.setSuperTypes(file, r.typeName(), r.superTypes()));
+			case Protocol.CreateFileRequest r -> throw new IllegalStateException("handled above");
+			case Protocol.RenameFileRequest r -> throw new IllegalStateException("handled above");
+			case Protocol.DeleteFileRequest r -> throw new IllegalStateException("handled above");
 		};
+	}
+
+	/**
+	 * Creates a file: empty, or with a first, empty diagram type. The text is
+	 * checked before the file is created (e.g. the type name must be free).
+	 */
+	private Answer createFile(String fileName, String diagramType) throws IOException {
+		String text = "";
+		if (diagramType != null && !diagramType.isBlank()) {
+			String name = diagramType.trim();
+			if (!org.bloqqi.compiler.ast.Program.isIdValid(name)) {
+				throw new IllegalArgumentException("Not a valid name: \"" + name + "\"");
+			}
+			text = "diagramtype " + name + " {\n}\n";
+		}
+		LoadedFile file = BloqqiLoader.load(fileName, text);
+		if (!file.syntaxErrors().isEmpty() || !file.semanticErrors().isEmpty()) {
+			throw new IllegalArgumentException("Not allowed: " + (file.semanticErrors().isEmpty()
+					? file.syntaxErrors() : file.semanticErrors().get(0).message()));
+		}
+		workspace.create(fileName, text);
+		return new Answer(DiagramBuilder.build(file, null), null, text);
+	}
+
+	/** The diagram of a type, or of the file's first type if it has no such type. */
+	private static Diagram buildOrFirst(LoadedFile file, String diagramType) {
+		try {
+			return DiagramBuilder.build(file, diagramType);
+		} catch (IllegalArgumentException noSuchType) {
+			return DiagramBuilder.build(file, null);
+		}
 	}
 
 	/** Writes an edit's new text and answers with the diagram built from it. */

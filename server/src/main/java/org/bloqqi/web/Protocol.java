@@ -39,6 +39,10 @@ import com.google.gson.JsonParser;
  *                   (both answered with the shown diagramType, renamed or, if deleted, the first)
  * client -> server  {"type":"addSubtype", "file", "superType", "name"}   (answered with the new type)
  * client -> server  {"type":"setSuperTypes", "file", "typeName", "superTypes":[...]}
+ * client -> server  {"type":"createFile", "file", "diagramType"}   (file: the new file; diagramType:
+ *                   its first type, or null for an empty file; answered with the new file)
+ * client -> server  {"type":"renameFile", "file", "newName", "diagramType"}   (answered with the renamed file)
+ * client -> server  {"type":"deleteFile", "file"}   (answered with the first remaining file)
  *                   (edits write the file and are answered with the new "diagram",
  *                    whose "change" is {before, after}: the file's text before and
  *                    after the edit; or with an "error" and the file unchanged)
@@ -78,7 +82,8 @@ final class Protocol {
 			permits OpenRequest, MoveRequest, ConnectRequest, DeleteRequest, AddBlockRequest, AddLiteralRequest,
 			AddVariableRequest, AddParameterRequest, RenameRequest, SetLiteralRequest, AutoLayoutRequest,
 			AddDiagramTypeRequest, AddExternalFunctionRequest, RenameTypeRequest, DeleteTypeRequest,
-			AddSubtypeRequest, SetSuperTypesRequest, RestoreRequest {
+			AddSubtypeRequest, SetSuperTypesRequest, CreateFileRequest, RenameFileRequest, DeleteFileRequest,
+			RestoreRequest {
 		String file();
 	}
 
@@ -154,6 +159,18 @@ final class Protocol {
 
 	/** Set the super types of a diagram type. */
 	record SetSuperTypesRequest(String file, String typeName, List<String> superTypes) implements Request {
+	}
+
+	/** Create a file, optionally with a first, empty diagram type, and show it. */
+	record CreateFileRequest(String file, String diagramType) implements Request {
+	}
+
+	/** Rename a file; keep showing {@code diagramType} in it. */
+	record RenameFileRequest(String file, String newName, String diagramType) implements Request {
+	}
+
+	/** Delete a file and show another. */
+	record DeleteFileRequest(String file) implements Request {
 	}
 
 	/** Undo/redo: replace the file's text with {@code text} if it is still {@code expected}. */
@@ -263,6 +280,15 @@ final class Protocol {
 		}
 		if ("setSuperTypes".equals(type)) {
 			return new SetSuperTypesRequest(string(o, "file"), required(o, "typeName"), strings(o, "superTypes"));
+		}
+		if ("createFile".equals(type)) {
+			return new CreateFileRequest(required(o, "file"), string(o, "diagramType"));
+		}
+		if ("renameFile".equals(type)) {
+			return new RenameFileRequest(required(o, "file"), required(o, "newName"), string(o, "diagramType"));
+		}
+		if ("deleteFile".equals(type)) {
+			return new DeleteFileRequest(required(o, "file"));
 		}
 		if ("restore".equals(type)) {
 			return new RestoreRequest(string(o, "file"), string(o, "diagramType"),

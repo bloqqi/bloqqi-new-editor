@@ -18,6 +18,7 @@ In the browser you can:
 - rename anything, with all uses in the file updated
 - create, rename and delete diagram types and external functions, and change
   super types
+- create, rename and delete files
 - undo and redo every edit
 
 Changes made to the file elsewhere, such as in a text editor or another tab,

@@ -3,7 +3,7 @@ import { Canvas } from './Canvas';
 import { Dialogs } from './Dialogs';
 import { EditingContext, type Editing } from './editing';
 import type { FlowEdgeType } from './FlowEdge';
-import { edgeMenu, newMenu, nodeMenu, paletteMenu, paneMenu, type MenuContext } from './menus';
+import { edgeMenu, fileMenu, newMenu, nodeMenu, paletteMenu, paneMenu, type MenuContext } from './menus';
 import type { PaletteEntry } from './protocol';
 import type { DiagramFlowNode } from './nodes';
 import { Palette } from './Palette';
@@ -127,6 +127,23 @@ export function App() {
     [openMenu, dialogs.newDiagramType, dialogs.newExternalFunction],
   );
 
+  /** The toolbar's File ▾ menu, below the button. */
+  const onFileMenu = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement>) => {
+      const r = e.currentTarget.getBoundingClientRect();
+      const below = { x: r.left, y: r.bottom + 4 };
+      openMenu(
+        below,
+        fileMenu(diagram?.file ?? null, status === 'open', {
+          newFile: () => dialogs.newFile(below),
+          renameFile: () => dialogs.renameFile(below),
+          deleteFile: () => dialogs.deleteFile(below),
+        }),
+      );
+    },
+    [openMenu, diagram, status, dialogs],
+  );
+
   const editing = useMemo<Editing>(
     () => ({
       editable,
@@ -139,7 +156,7 @@ export function App() {
 
   return (
     <div className="app">
-      <Toolbar server={server} fileEditable={fileEditable} onNew={onNew} />
+      <Toolbar server={server} fileEditable={fileEditable} onNew={onNew} onFileMenu={onFileMenu} />
 
       {server.error && (
         <div className="banner banner--error" role="alert">

@@ -1,6 +1,7 @@
 package org.bloqqi.web;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -64,6 +65,17 @@ public class WebServerTest {
 		JsonObject poll(long millis) throws InterruptedException {
 			String text = messages.poll(millis, TimeUnit.MILLISECONDS);
 			return text == null ? null : new JsonParser().parse(text).getAsJsonObject();
+		}
+
+		/** The next answer ("diagram" or "error"), skipping pushed messages. */
+		JsonObject answer() throws InterruptedException {
+			while (true) {
+				JsonObject m = next();
+				String type = m.get("type").getAsString();
+				if (type.equals("diagram") || type.equals("error")) {
+					return m;
+				}
+			}
 		}
 
 		JsonObject next() throws InterruptedException {
@@ -323,6 +335,44 @@ public class WebServerTest {
 		}
 		assertTrue("notice", notice);
 		assertTrue("new file list", listed);
+	}
+
+	@Test
+	public void filesCanBeCreatedRenamedAndDeleted() throws Exception {
+		Path dir = watchedWorkspace();
+		Client a = openAcc();
+		Client b = openAcc();
+
+		a.socket.sendText("{\"type\":\"createFile\",\"file\":\"New.dia\",\"diagramType\":\"Main\"}", true);
+		JsonObject created = a.answer();
+		assertEquals(created.toString(), "diagram", created.get("type").getAsString());
+		assertEquals("New.dia", created.get("file").getAsString());
+		assertEquals("Main", created.get("diagramType").getAsString());
+		assertEquals("diagramtype Main {\n}\n", Files.readString(dir.resolve("New.dia")));
+		JsonObject listed = b.next(); // the other tab learns about the file
+		assertEquals("files", listed.get("type").getAsString());
+		assertTrue(listed.get("files").toString().contains("New.dia"));
+
+		// A type name the standard library has is refused, and nothing is created.
+		a.socket.sendText("{\"type\":\"createFile\",\"file\":\"Other.dia\",\"diagramType\":\"Add\"}", true);
+		assertEquals("error", a.answer().get("type").getAsString());
+		assertFalse(Files.exists(dir.resolve("Other.dia")));
+
+		a.socket.sendText("{\"type\":\"renameFile\",\"file\":\"New.dia\",\"newName\":\"Renamed.dia\","
+				+ "\"diagramType\":\"Main\"}", true);
+		JsonObject renamed = a.answer();
+		assertEquals("Renamed.dia", renamed.get("file").getAsString());
+		assertEquals("Main", renamed.get("diagramType").getAsString());
+
+		a.socket.sendText("{\"type\":\"deleteFile\",\"file\":\"Renamed.dia\"}", true);
+		JsonObject after = a.answer();
+		assertEquals(after.toString(), "TwoCounters.dia", after.get("file").getAsString());
+		assertFalse(Files.exists(dir.resolve("Renamed.dia")));
+
+		a.socket.sendText("{\"type\":\"deleteFile\",\"file\":\"TwoCounters.dia\"}", true);
+		JsonObject refused = a.answer();
+		assertEquals("error", refused.get("type").getAsString());
+		assertTrue(refused.get("message").getAsString().contains("it is the only file"));
 	}
 
 	private static String restore(String diagramType, String text, String expected) {

@@ -24,6 +24,10 @@ export interface Dialogs {
   externalForm: Point | null;
   /** The form for the shown type's super types (where it opens). */
   superTypesForm: Point | null;
+  /** The form for a new file (where it opens). */
+  newFileForm: Point | null;
+  /** Confirming that the shown file is to be deleted (where it opens). */
+  deleteFileForm: Point | null;
   /** The server's reason why the open form's last submission was refused. */
   formError: string | null;
   /** A literal is being dragged from the palette. */
@@ -41,10 +45,15 @@ export interface Dialogs {
   renameType: (typeName: string, screen: Point) => void;
   newSubtype: (superType: string, screen: Point) => void;
   editSuperTypes: (screen: Point) => void;
+  newFile: (screen: Point) => void;
+  renameFile: (screen: Point) => void;
+  deleteFile: (screen: Point) => void;
   submitAddForm: (values: FormValues) => void;
   submitPrompt: (value: string) => void;
   submitExternalFunction: (name: string, inputs: ParameterSpec[], output: ParameterSpec | null) => void;
   submitSuperTypes: (superTypes: string[]) => void;
+  submitNewFile: (file: string, diagramType: string | null) => void;
+  submitDeleteFile: () => void;
   /** Closes the open form. */
   cancelForm: () => void;
   /** The outcome of a submitted form: null closes it, a reason is shown in it. */
@@ -69,6 +78,8 @@ export function useDialogs({
   const [prompt, setPrompt] = useState<PromptRequest | null>(null);
   const [externalForm, setExternalForm] = useState<Point | null>(null);
   const [superTypesForm, setSuperTypesForm] = useState<Point | null>(null);
+  const [newFileForm, setNewFileForm] = useState<Point | null>(null);
+  const [deleteFileForm, setDeleteFileForm] = useState<Point | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [draggingLiteral, setDraggingLiteral] = useState(false);
 
@@ -80,6 +91,8 @@ export function useDialogs({
     setPrompt(null);
     setExternalForm(null);
     setSuperTypesForm(null);
+    setNewFileForm(null);
+    setDeleteFileForm(null);
     setFormError(null);
   }, []);
 
@@ -145,6 +158,35 @@ export function useDialogs({
     setSuperTypesForm(screen);
   }, []);
 
+  const newFile = useCallback((screen: Point) => {
+    setFormError(null);
+    setNewFileForm(screen);
+  }, []);
+
+  const renameFile = useCallback(
+    (screen: Point) => {
+      if (!diagram) return;
+      setFormError(null);
+      setPrompt({ kind: 'renameFile', id: diagram.file, initial: diagram.file, screen });
+    },
+    [diagram],
+  );
+
+  const deleteFile = useCallback((screen: Point) => {
+    setFormError(null);
+    setDeleteFileForm(screen);
+  }, []);
+
+  const submitNewFile = useCallback(
+    // Answered with the new file, so the view switches to it.
+    (file: string, diagramType: string | null) => send({ type: 'createFile', file, diagramType }, 'form'),
+    [send],
+  );
+
+  const submitDeleteFile = useCallback(() => {
+    if (diagram) send({ type: 'deleteFile', file: diagram.file }, 'form');
+  }, [diagram, send]);
+
   const submitAddForm = useCallback(
     (values: FormValues) => {
       if (!addForm || !diagram?.diagramType) return;
@@ -182,6 +224,11 @@ export function useDialogs({
         case 'newSubtype':
           send({ type: 'addSubtype', file: diagram.file, superType: prompt.id, name }, 'form');
           return;
+        case 'renameFile': {
+          const newName = name.endsWith('.dia') ? name : `${name}.dia`;
+          send({ type: 'renameFile', file: diagram.file, newName, diagramType: diagram.diagramType }, 'form');
+          return;
+        }
         case 'renameType':
           // Answered with the shown type, under its new name if it was the one renamed.
           send({ type: 'renameType', file: diagram.file, diagramType: diagram.diagramType, typeName: prompt.id, name }, 'form');
@@ -221,6 +268,13 @@ export function useDialogs({
   return {
     menu,
     superTypesForm,
+    newFileForm,
+    deleteFileForm,
+    newFile,
+    renameFile,
+    deleteFile,
+    submitNewFile,
+    submitDeleteFile,
     renameType,
     newSubtype,
     editSuperTypes,

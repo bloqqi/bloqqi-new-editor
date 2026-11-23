@@ -111,6 +111,56 @@ public final class Workspace {
 		return current;
 	}
 
+	/** Names for new files: letters, digits, space, '_', '-', '.'; ending with ".dia". */
+	private static final java.util.regex.Pattern NEW_NAME =
+			java.util.regex.Pattern.compile("[A-Za-z0-9][A-Za-z0-9 _.\\-]{0,95}\\.dia");
+
+	/**
+	 * Creates a new file with the given text.
+	 *
+	 * @throws IllegalArgumentException if the name is not allowed or the file exists
+	 */
+	public void create(String fileName, String text) throws IOException {
+		Path path = newPath(fileName);
+		Path tmp = Files.createTempFile(root, "." + fileName + ".", ".tmp");
+		try {
+			Files.writeString(tmp, text, StandardCharsets.UTF_8);
+			Files.move(tmp, path, StandardCopyOption.ATOMIC_MOVE);
+		} finally {
+			Files.deleteIfExists(tmp);
+		}
+	}
+
+	/**
+	 * Renames a file.
+	 *
+	 * @throws IllegalArgumentException if a name is not allowed, the file does
+	 *         not exist, or a file with the new name does
+	 */
+	public void rename(String fileName, String newName) throws IOException {
+		read(fileName); // must exist
+		Files.move(resolve(fileName), newPath(newName));
+	}
+
+	/** Deletes a file. */
+	public void delete(String fileName) throws IOException {
+		read(fileName); // must exist
+		Files.delete(resolve(fileName));
+	}
+
+	/** The path of a file that is to be created. */
+	private Path newPath(String fileName) {
+		if (fileName == null || !NEW_NAME.matcher(fileName).matches()) {
+			throw new IllegalArgumentException("Not a valid file name: \"" + fileName
+					+ "\" (use letters, digits, space, _, - and ., ending with .dia)");
+		}
+		Path path = resolve(fileName);
+		if (Files.exists(path)) {
+			throw new IllegalArgumentException("There is already a file called " + fileName);
+		}
+		return path;
+	}
+
 	private Path resolve(String fileName) {
 		if (fileName == null
 				|| !fileName.endsWith(".dia")

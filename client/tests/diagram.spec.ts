@@ -789,6 +789,56 @@ test('inherited blocks have no delete button', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Delete block', exact: true })).toHaveCount(1);
 });
 
+test('files can be created, renamed and deleted from the File menu', async ({ page }) => {
+  const workspace = resolve('..', 'build', 'e2e-workspace');
+  const exists = (name: string) => {
+    try {
+      readFileSync(resolve(workspace, name));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  await goto(page, '/?file=TwoCounters.dia&type=Main');
+
+  // New file: ".dia" is added, and it opens with an empty first type.
+  await page.getByTestId('file-menu').click();
+  await page.getByRole('menuitem', { name: 'New file…' }).click();
+  const form = page.getByTestId('new-file-form');
+  await expect(form.getByLabel('First diagram type')).toHaveValue('Main');
+  await form.getByLabel('Name').fill('TwoCounters');
+  await form.getByLabel('Name').press('Enter');
+  await expect(form.getByRole('alert')).toContainText('already a file called TwoCounters.dia');
+  await form.getByLabel('Name').fill('Fresh');
+  await form.getByLabel('Name').press('Enter');
+
+  await expect(page.getByTestId('file-select')).toHaveValue('Fresh.dia');
+  await expect(page.getByTestId('type-select')).toHaveValue('Main');
+  await expect(page).toHaveURL(/file=Fresh\.dia/);
+  expect(readFileSync(resolve(workspace, 'Fresh.dia'), 'utf8')).toBe('diagramtype Main {\n}\n');
+
+  // Rename.
+  await page.getByTestId('file-menu').click();
+  await page.getByRole('menuitem', { name: 'Rename Fresh.dia…' }).click();
+  await page.getByTestId('prompt-form').getByLabel('Name').fill('Fresher.dia');
+  await page.getByTestId('prompt-form').getByLabel('Name').press('Enter');
+  await expect(page.getByTestId('file-select')).toHaveValue('Fresher.dia');
+  expect(exists('Fresh.dia')).toBe(false);
+  expect(exists('Fresher.dia')).toBe(true);
+
+  // Delete asks first; Cancel keeps the file.
+  await page.getByTestId('file-menu').click();
+  await page.getByRole('menuitem', { name: 'Delete Fresher.dia…' }).click();
+  await page.getByTestId('confirm-form').getByRole('button', { name: 'Cancel' }).click();
+  expect(exists('Fresher.dia')).toBe(true);
+  await page.getByTestId('file-menu').click();
+  await page.getByRole('menuitem', { name: 'Delete Fresher.dia…' }).click();
+  await page.getByTestId('confirm-form').getByRole('button', { name: 'Delete' }).click();
+  await expect(page.getByTestId('file-select')).not.toHaveValue('Fresher.dia');
+  await expect(page.getByTestId('file-select').locator('option', { hasText: 'Fresher.dia' })).toHaveCount(0);
+  expect(exists('Fresher.dia')).toBe(false);
+});
+
 test('inherited connections cannot be selected', async ({ page }) => {
   await goto(page, '/?file=PLib.dia&type=PTrack');
   const inherited = edge(page, 'P::e.out:out->P::PPart.in:in1');

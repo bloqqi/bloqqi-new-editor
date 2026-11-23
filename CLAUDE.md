@@ -95,6 +95,11 @@
   (annotations, wiring) and is refused while anything uses the type;
   `addSubtype` appends `diagramtype X extends T {}`; `setSuperTypes` rewrites
   the `extends` clause (between the parameters and `{`).
+- Files (toolbar "File ▾"): `createFile` (empty, or with a first empty
+  diagram type), `renameFile`, `deleteFile` (asks first; not the last file).
+  These are `Workspace` operations, handled before a request's file is loaded;
+  they are not on the undo history. New file names: letters, digits, space,
+  `_`, `-`, `.`, ending with `.dia`.
 - Client: right-click menus (`ContextMenu.tsx`) for nodes, connections and
   the canvas; double-click or F2 opens Rename/Change value (`PromptForm.tsx`).
 - Edits are checked by reparsing before anything is written; an edit that adds

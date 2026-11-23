@@ -332,6 +332,27 @@ export interface SetSuperTypesRequest {
   superTypes: string[];
 }
 
+/** Create a file (`file` is the new name), with a first diagram type or empty; answered with it. */
+export interface CreateFileRequest {
+  type: 'createFile';
+  file: string;
+  diagramType: string | null;
+}
+
+/** Rename a file; answered with the renamed file (same diagram type). */
+export interface RenameFileRequest {
+  type: 'renameFile';
+  file: string;
+  newName: string;
+  diagramType: string | null;
+}
+
+/** Delete a file (not the last one); answered with the first remaining file. */
+export interface DeleteFileRequest {
+  type: 'deleteFile';
+  file: string;
+}
+
 export type ClientMessage =
   | OpenRequest
   | MoveRequest
@@ -350,6 +371,9 @@ export type ClientMessage =
   | DeleteTypeRequest
   | AddSubtypeRequest
   | SetSuperTypesRequest
+  | CreateFileRequest
+  | RenameFileRequest
+  | DeleteFileRequest
   | RestoreRequest;
 
 export function webSocketUrl(): string {

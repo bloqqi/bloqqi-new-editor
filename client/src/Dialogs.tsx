@@ -1,4 +1,6 @@
 import { AddForm } from './AddForm';
+import { ConfirmForm } from './ConfirmForm';
+import { NewFileForm } from './NewFileForm';
 import { ContextMenu } from './ContextMenu';
 import { ExternalFunctionForm } from './ExternalFunctionForm';
 import { PromptForm } from './PromptForm';
@@ -47,6 +49,27 @@ export function Dialogs({
           error={d.formError}
           busy={busy}
           onSubmit={d.submitSuperTypes}
+          onCancel={d.cancelForm}
+        />
+      )}
+      {d.newFileForm && (
+        <NewFileForm
+          screen={d.newFileForm}
+          error={d.formError}
+          busy={busy}
+          onSubmit={d.submitNewFile}
+          onCancel={d.cancelForm}
+        />
+      )}
+      {d.deleteFileForm && diagram && (
+        <ConfirmForm
+          screen={d.deleteFileForm}
+          title={`Delete ${diagram.file}?`}
+          message="The file is deleted from the workspace. This cannot be undone."
+          action="Delete"
+          error={d.formError}
+          busy={busy}
+          onConfirm={d.submitDeleteFile}
           onCancel={d.cancelForm}
         />
       )}

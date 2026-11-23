@@ -108,6 +108,20 @@ function typeItems(name: string, kind: PaletteEntry['kind'], c: MenuContext, at:
   return items;
 }
 
+/** The toolbar's File ▾ menu: New file…, Rename <file>…, Delete <file>…. */
+export function fileMenu(
+  file: string | null,
+  connected: boolean,
+  actions: { newFile: () => void; renameFile: () => void; deleteFile: () => void },
+): MenuItem[] {
+  const reason = !connected ? 'Not connected' : file ? null : 'No file is open';
+  return [
+    { label: 'New file…', disabledReason: connected ? null : 'Not connected', onSelect: actions.newFile },
+    { label: `Rename ${file ?? 'file'}…`, disabledReason: reason, onSelect: actions.renameFile },
+    { label: `Delete ${file ?? 'file'}…`, disabledReason: reason, onSelect: actions.deleteFile },
+  ];
+}
+
 /** The toolbar's New ▾ menu. */
 export function newMenu(actions: { newDiagramType: () => void; newExternalFunction: () => void }): MenuItem[] {
   return [
