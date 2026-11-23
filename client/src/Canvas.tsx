@@ -1,0 +1,158 @@
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import {
+  Background,
+  ControlButton,
+  Controls,
+  ReactFlow,
+  ReactFlowProvider,
+  useNodesInitialized,
+  useReactFlow,
+  useStore,
+  ViewportPortal,
+  type NodeChange,
+  type OnNodeDrag,
+} from '@xyflow/react';
+import { edgeTypes, type FlowEdgeType } from './FlowEdge';
+import { nodeTypes, type DiagramFlowNode } from './nodes';
+import type { DiagramMessage } from './protocol';
+
+export type Extent = [[number, number], [number, number]];
+
+/**
+ * Nodes can't be dragged above or left of the origin: positions are stored in
+ * annotation(...) blocks, whose numbers are unsigned. (Literals and the blocks
+ * they feed get their own extents, see App's toFlowNodes.)
+ */
+const NODE_EXTENT: Extent = [
+  [0, 0],
+  [Infinity, Infinity],
+];
+
+/**
+ * The canvas shows only the area where nodes can go, plus a strip of this many
+ * screen pixels outside it (shaded) so that the edge is visible. It is the same
+ * at every zoom level and in every diagram.
+ */
+const OUTSIDE_PX = 16;
+
+const FIT_OPTIONS = { padding: 0.2, maxZoom: 1.5 };
+
+/**
+ * Top-left corner of what is drawn, in flow coordinates: the origin, unless a
+ * file has nodes or literals at negative positions (literals are drawn left of
+ * the block they feed; the editor keeps them inside, but files can say
+ * otherwise). Ports sticking out of a block at x = 0 fit in the strip.
+ */
+function contentOrigin(diagram: DiagramMessage | null): [number, number] {
+  let minX = 0;
+  let minY = 0;
+  for (const n of diagram?.nodes ?? []) {
+    minX = Math.min(minX, n.x);
+    minY = Math.min(minY, n.y);
+  }
+  return [minX, minY];
+}
+
+export interface CanvasProps {
+  diagram: DiagramMessage | null;
+  nodes: DiagramFlowNode[];
+  edges: FlowEdgeType[];
+  draggable: boolean;
+  onNodesChange: (changes: NodeChange<DiagramFlowNode>[]) => void;
+  onNodeDragStop: OnNodeDrag<DiagramFlowNode>;
+  /** Called once the initial view of the diagram has been fitted. */
+  onFitted: () => void;
+}
+
+/** The diagram canvas. Remount it (key) for each diagram to get a fresh view. */
+export function Canvas(props: CanvasProps) {
+  return (
+    <ReactFlowProvider>
+      <Flow {...props} />
+    </ReactFlowProvider>
+  );
+}
+
+function Flow({ diagram, nodes, edges, draggable, onNodesChange, onNodeDragStop, onFitted }: CanvasProps) {
+  const origin = useMemo(() => contentOrigin(diagram), [diagram]);
+  // Panning stops OUTSIDE_PX screen pixels beyond the origin; in flow units
+  // that depends on the zoom.
+  const zoom = useStore((s) => s.transform[2]);
+  const translateExtent = useMemo<Extent>(
+    () => [
+      [origin[0] - OUTSIDE_PX / zoom, origin[1] - OUTSIDE_PX / zoom],
+      [Infinity, Infinity],
+    ],
+    [origin, zoom],
+  );
+
+  return (
+    <ReactFlow
+      nodes={nodes}
+      onNodesChange={onNodesChange}
+      onNodeDragStop={onNodeDragStop}
+      edges={edges}
+      nodeTypes={nodeTypes}
+      edgeTypes={edgeTypes}
+      nodesDraggable={draggable}
+      nodeExtent={NODE_EXTENT}
+      translateExtent={translateExtent}
+      nodesConnectable={false}
+      edgesFocusable={false}
+      proOptions={{ hideAttribution: true }}
+    >
+      <Background gap={20} />
+      {diagram?.diagramType && (
+        <ViewportPortal>
+          {/* The area x >= 0, y >= 0 where nodes can be placed; outside is shaded. */}
+          <div className="allowed-area" data-testid="allowed-area" aria-hidden="true" />
+        </ViewportPortal>
+      )}
+      <FitControls origin={origin} onFitted={onFitted} />
+    </ReactFlow>
+  );
+}
+
+/**
+ * Fits the diagram once its nodes are measured, and replaces the Controls' fit
+ * button. React Flow's fitView centres the diagram, which would show the
+ * shaded outside; here the fitted view is then moved so that the content's
+ * top-left corner sits OUTSIDE_PX from the canvas' top-left corner, like a page.
+ */
+function FitControls({ origin, onFitted }: { origin: [number, number]; onFitted: () => void }) {
+  const flow = useReactFlow();
+  const fit = useCallback(async () => {
+    await flow.fitView(FIT_OPTIONS);
+    const { x, y, zoom } = flow.getViewport();
+    await flow.setViewport({
+      x: Math.min(x, -origin[0] * zoom + OUTSIDE_PX),
+      y: Math.min(y, -origin[1] * zoom + OUTSIDE_PX),
+      zoom,
+    });
+  }, [flow, origin]);
+
+  const initialized = useNodesInitialized();
+  const done = useRef(false);
+  useEffect(() => {
+    if (initialized && !done.current) {
+      done.current = true;
+      void fit().then(onFitted);
+    }
+  }, [initialized, fit, onFitted]);
+
+  return (
+    <Controls showInteractive={false} showFitView={false}>
+      <ControlButton
+        onClick={() => void fit()}
+        title="fit view"
+        aria-label="fit view"
+        className="react-flow__controls-fitview"
+      >
+        {/* React Flow's own fit-view icon. */}
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 30">
+          <path d="M3.692 4.63c0-.53.4-.938.939-.938h5.215V0H4.708C2.13 0 0 2.054 0 4.63v5.216h3.692V4.631zM27.354 0h-5.2v3.692h5.17c.53 0 .984.4.984.939v5.215H32V4.631A4.624 4.624 0 0027.354 0zm.954 24.83c0 .532-.4.94-.939.94h-5.215v3.768h5.215c2.577 0 4.631-2.13 4.631-4.707v-5.139h-3.692v5.139zm-23.677.94c-.531 0-.939-.4-.939-.94v-5.138H0v5.139c0 2.577 2.13 4.707 4.708 4.707h5.138V25.77H4.631z" />
+        </svg>
+      </ControlButton>
+    </Controls>
+  );
+}

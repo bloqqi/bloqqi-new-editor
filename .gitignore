@@ -1,0 +1,14 @@
+# The old Eclipse editor: a separate clone of github.com/bloqqi/bloqqi-editor,
+# kept here only as a reference (docs/editor-spec.md describes it).
+/bloqqi-editor/
+
+# Build outputs
+/build/
+/lib/
+/client/node_modules/
+/client/dist/
+/client/test-results/
+/client/playwright-report/
+
+# Default workspace of "ant run" (a copy of the compiler examples that the editor writes to)
+/workspace/

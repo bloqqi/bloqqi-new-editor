@@ -1,0 +1,309 @@
+:root {
+  --bg: #f0f0f0;
+  --panel: #ffffff;
+  --text: #1d1d1f;
+  --muted: #6b6b70;
+  --border: #d0d0d5;
+  --local: #1f4fd1;
+  --inherited-fill: #dcdcdc;
+  --inherited-border: #333333;
+  --error: #b42318;
+  --flow-error: #d92d20;
+  --outside: rgba(60, 60, 70, 0.1);
+  --boundary: #9a9aa3;
+  --port-local: #0b2a7a;
+  --port-inherited: #000000;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  color: var(--text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 8px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.toolbar__title {
+  margin-right: 8px;
+}
+
+.toolbar select {
+  font: inherit;
+  padding: 2px 4px;
+}
+
+.status {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.status--reconnecting {
+  color: var(--error);
+}
+
+.banner {
+  padding: 8px 16px;
+}
+
+.banner--error {
+  background: #fdecea;
+  color: var(--error);
+}
+
+.banner--info {
+  background: #fff8e1;
+  color: #6b5200;
+}
+
+.canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+/*
+ * Nodes can only be placed at x >= 0, y >= 0 (annotation numbers are
+ * unsigned). The allowed area starts at the flow origin; a huge box-shadow
+ * shades everything outside it. Drawn in flow coordinates (ViewportPortal),
+ * under edges and nodes.
+ */
+.react-flow__viewport-portal {
+  z-index: -1;
+}
+
+.allowed-area {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100000px;
+  height: 100000px;
+  border-top: 1px solid var(--boundary);
+  border-left: 1px solid var(--boundary);
+  box-shadow: 0 0 0 100000px var(--outside);
+  pointer-events: none;
+}
+
+.empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: var(--muted);
+  pointer-events: none;
+  z-index: 5;
+}
+
+/*
+ * Nodes (mirror the old editor): local = blue outline, white fill;
+ * inherited = dashed black outline, grey fill; inlined = dashed, white fill;
+ * error = red.
+ */
+.block,
+.parameter,
+.variable {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+  background: #ffffff;
+  border: 1px solid var(--local);
+  font-size: 11px;
+  line-height: 1.1;
+  overflow: hidden;
+}
+
+.block,
+.variable {
+  justify-content: center;
+  text-align: center;
+}
+
+.block {
+  border-radius: 4px;
+}
+
+.block--inherited,
+.parameter--inherited,
+.variable--inherited {
+  background: var(--inherited-fill);
+  border: 1px dashed var(--inherited-border);
+}
+
+.block--inlined,
+.variable--inlined {
+  background: #ffffff;
+  border: 1px dashed var(--inherited-border);
+}
+
+.block--error {
+  border-color: var(--flow-error);
+  color: var(--flow-error);
+}
+
+/* Selected nodes (click, shift-click or shift-drag a box; drag to move). */
+.react-flow__node.selected > .block,
+.react-flow__node.selected > .parameter,
+.react-flow__node.selected > .variable {
+  box-shadow: 0 0 0 2px rgba(31, 79, 209, 0.35);
+}
+
+.react-flow__node.draggable {
+  cursor: grab;
+}
+
+.react-flow__node.dragging {
+  cursor: grabbing;
+}
+
+.node__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Parameters: a triangle on the right (in) or a bar on the left (out). */
+.parameter {
+  gap: 3px;
+  padding: 0 3px;
+}
+
+.parameter__marker {
+  flex: none;
+}
+
+.parameter--in .parameter__marker {
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 7px solid var(--port-local);
+}
+
+.parameter--out .parameter__marker {
+  align-self: stretch;
+  width: 3px;
+  margin: 3px 0;
+  background: var(--port-local);
+}
+
+.parameter--inherited.parameter--in .parameter__marker {
+  border-left-color: var(--port-inherited);
+}
+
+.parameter--inherited.parameter--out .parameter__marker {
+  background: var(--port-inherited);
+}
+
+.literal {
+  width: 100%;
+  height: 100%;
+  font-size: 11px;
+  line-height: 15px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Ports: 6×6 squares just outside the block (PortFigure). */
+.react-flow__handle.port {
+  width: 6px;
+  height: 6px;
+  min-width: 0;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+  background: var(--port-local);
+  transform: none;
+}
+
+.react-flow__handle.port--in {
+  left: -6px;
+}
+
+.react-flow__handle.port--out {
+  right: -6px;
+  left: auto;
+}
+
+.react-flow__node-block:has(.block--inherited) .port,
+.react-flow__node-block:has(.block--inlined) .port {
+  background: var(--port-inherited);
+}
+
+.react-flow__handle.handle--hidden {
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  min-height: 0;
+  border: none;
+  background: transparent;
+  pointer-events: none;
+}
+
+/* Connections (ConnectionPart): local blue, inherited dashed black, errors red and thicker. */
+.react-flow__edge-path.flow {
+  stroke: var(--local);
+  stroke-width: 1;
+}
+
+.react-flow__edge-path.flow--error {
+  stroke: var(--flow-error);
+  stroke-width: 2;
+}
+
+.react-flow__edge-path.flow--inherited {
+  stroke: var(--inherited-border);
+  stroke-dasharray: 4 2;
+}
+
+.flow__marker {
+  fill: var(--local);
+}
+
+.problems {
+  max-height: 30%;
+  overflow: auto;
+  padding: 8px 16px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+}
+
+.problems h2 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.problems ul {
+  margin: 0;
+  padding-left: 18px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  color: var(--error);
+}

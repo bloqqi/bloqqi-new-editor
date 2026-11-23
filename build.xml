@@ -1,0 +1,265 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Build for the Bloqqi web editor: Java server (server/) + browser client (client/).
+
+  The Bloqqi compiler is used as a library from the editor's compiler checkout.
+  We run only its "gen" target (JastAdd/JFlex/Beaver code generation, output in
+  its git-ignored src/generated/) and compile the sources ourselves into build/,
+  with release=8: the compiler uses java.lang.Compiler, which no longer exists
+  in the JDK 21 class library, so its own "build"/"jar" targets fail on JDK 21.
+-->
+<project name="bloqqi-web-editor" default="build" basedir=".">
+
+	<property name="compiler.dir" location="bloqqi-compiler"/>
+	<property name="compiler.tools" location="${compiler.dir}/tools"/>
+	<!-- The editor writes to the files it shows, so it never serves the compiler's
+	     examples/ directly: "ant run" serves a copy in workspace/ (made on first
+	     use, kept by "ant clean"), and the e2e tests a fresh copy per run. -->
+	<property name="examples" location="${compiler.dir}/examples"/>
+	<property name="default.workspace" location="workspace"/>
+	<property name="workspace" location="${default.workspace}"/>
+	<property name="e2e.workspace" location="build/e2e-workspace"/>
+	<property name="port" value="8080"/>
+
+	<property name="lib.dir" location="lib"/>
+	<property name="build.dir" location="build"/>
+	<property name="compiler.classes" location="${build.dir}/compiler/classes"/>
+	<property name="server.classes" location="${build.dir}/server/classes"/>
+	<property name="test.classes" location="${build.dir}/server/test-classes"/>
+	<property name="client.dir" location="client"/>
+	<property name="client.dist" location="${client.dir}/dist"/>
+
+	<property name="maven.central" value="https://repo1.maven.org/maven2"/>
+
+	<!-- ===== Dependencies: pinned versions, verified by SHA-1 ===== -->
+
+	<macrodef name="fetch">
+		<attribute name="group"/>
+		<attribute name="artifact"/>
+		<attribute name="version"/>
+		<attribute name="sha1"/>
+		<sequential>
+			<local name="jar.file"/>
+			<local name="jar.present"/>
+			<local name="jar.ok"/>
+			<property name="jar.file" location="${lib.dir}/@{artifact}-@{version}.jar"/>
+			<available file="${jar.file}" property="jar.present"/>
+			<get unless:set="jar.present" xmlns:unless="ant:unless"
+				src="${maven.central}/@{group}/@{artifact}/@{version}/@{artifact}-@{version}.jar"
+				dest="${jar.file}" usetimestamp="false" quiet="true"/>
+			<checksum file="${jar.file}" algorithm="SHA-1" property="@{sha1}" verifyproperty="jar.ok"/>
+			<fail message="Checksum mismatch for ${jar.file}; delete it and retry.">
+				<condition><isfalse value="${jar.ok}"/></condition>
+			</fail>
+		</sequential>
+	</macrodef>
+
+	<target name="deps" description="Download pinned Java dependencies into lib/">
+		<mkdir dir="${lib.dir}"/>
+		<!-- HTTP server + WebSocket (Jetty 12 core, no servlets) -->
+		<fetch group="org/eclipse/jetty" artifact="jetty-server" version="12.0.16" sha1="3e3638b4bfbee04c27b3ae68e4949fc43b40a042"/>
+		<fetch group="org/eclipse/jetty" artifact="jetty-http" version="12.0.16" sha1="68019fa90e8420ae15c109bd8c8611cacbaf43e5"/>
+		<fetch group="org/eclipse/jetty" artifact="jetty-io" version="12.0.16" sha1="7a162c537a99bbaf35a074fec9a50815e6c81d9d"/>
+		<fetch group="org/eclipse/jetty" artifact="jetty-util" version="12.0.16" sha1="e262e505363e5925df15618622d9888aefc1b0d0"/>
+		<fetch group="org/eclipse/jetty/websocket" artifact="jetty-websocket-jetty-server" version="12.0.16" sha1="cebd1f2ae6bcabf672a947ebe05572007ac172ec"/>
+		<fetch group="org/eclipse/jetty/websocket" artifact="jetty-websocket-jetty-api" version="12.0.16" sha1="6f9daad7d609bf04622b2d36bba7dce90dcc20e1"/>
+		<fetch group="org/eclipse/jetty/websocket" artifact="jetty-websocket-jetty-common" version="12.0.16" sha1="70a36ac508c15b6862bee34e18f60e13b714012b"/>
+		<fetch group="org/eclipse/jetty/websocket" artifact="jetty-websocket-core-server" version="12.0.16" sha1="5a45294e7ade2ffc2f1928cd3175db7b913c09bf"/>
+		<fetch group="org/eclipse/jetty/websocket" artifact="jetty-websocket-core-common" version="12.0.16" sha1="dcb9deb8e5fbff3654b4e6abc99f3e16eddb3ba3"/>
+		<fetch group="org/slf4j" artifact="slf4j-api" version="2.0.16" sha1="0172931663a09a1fa515567af5fbef00897d3c04"/>
+		<fetch group="org/slf4j" artifact="slf4j-simple" version="2.0.16" sha1="56d3d8e59293543780ad35af4ee4a5d9c111a588"/>
+		<!-- Layout: ELK layered (+ EMF and Guava, which ELK's graph model needs) -->
+		<fetch group="org/eclipse/elk" artifact="org.eclipse.elk.core" version="0.12.1" sha1="3dbd9f13fae7559166d1dbd5d8100ec1f602e5f5"/>
+		<fetch group="org/eclipse/elk" artifact="org.eclipse.elk.graph" version="0.12.1" sha1="3b7cb878d50f9f3596450c79747273010f114ba5"/>
+		<fetch group="org/eclipse/elk" artifact="org.eclipse.elk.alg.common" version="0.12.1" sha1="a050b14c28de684ff0efeeb1f60e4465897f0068"/>
+		<fetch group="org/eclipse/elk" artifact="org.eclipse.elk.alg.layered" version="0.12.1" sha1="04826d86981c621537b778d9f026816f67084afa"/>
+		<fetch group="org/eclipse/emf" artifact="org.eclipse.emf.common" version="2.12.0" sha1="ce79e5cc3c2de3e8d96a6df4dad3bf5c9fa6b7d7"/>
+		<fetch group="org/eclipse/emf" artifact="org.eclipse.emf.ecore" version="2.12.0" sha1="644751074e8b448526815f9bdeda26770df2e213"/>
+		<fetch group="org/eclipse/emf" artifact="org.eclipse.emf.ecore.xmi" version="2.12.0" sha1="ad136ea23fcdaebec17ec6c730dfdf74b2077c37"/>
+		<!-- Not declared in ELK's POMs, but required at runtime (bundle manifest: xbase.lib >= 2.10.0) -->
+		<fetch group="org/eclipse/xtext" artifact="org.eclipse.xtext.xbase.lib" version="2.36.0" sha1="9cf03dac3a9cc266b15ac3788bff33edac3c0bca"/>
+		<fetch group="com/google/guava" artifact="guava" version="33.3.1-jre" sha1="852f8b363da0111e819460021ca693cacca3e8db"/>
+		<fetch group="com/google/guava" artifact="failureaccess" version="1.0.2" sha1="c4a06a64e650562f30b7bf9aaec1bfed43aca12b"/>
+		<!-- Tests -->
+		<fetch group="junit" artifact="junit" version="4.13.2" sha1="8ac9e16d933b6fb43bc7f576336b8f4d7eb5ba12"/>
+		<fetch group="org/hamcrest" artifact="hamcrest-core" version="1.3" sha1="42a25dc3219429f0e5d060061f71acb49bf010a0"/>
+	</target>
+
+	<!-- ===== Compiler (library) ===== -->
+
+	<path id="compiler.classpath">
+		<pathelement location="${compiler.classes}"/>
+		<!-- beaver runtime and gson (same version the compiler itself uses) -->
+		<pathelement location="${compiler.tools}/beaver-rt.jar"/>
+		<pathelement location="${compiler.tools}/gson-2.6.2.jar"/>
+	</path>
+
+	<target name="compiler-check">
+		<uptodate property="compiler.uptodate" targetfile="${build.dir}/compiler/stamp">
+			<srcfiles dir="${compiler.dir}" includes="spec/**,src/java/**,src/resource/**,build.xml"/>
+		</uptodate>
+	</target>
+
+	<target name="compiler" depends="compiler-check" unless="compiler.uptodate"
+			description="Generate and compile the Bloqqi compiler into build/compiler">
+		<ant dir="${compiler.dir}" antfile="build.xml" target="gen" inheritAll="false"/>
+		<delete dir="${compiler.classes}"/>
+		<mkdir dir="${compiler.classes}"/>
+		<javac destdir="${compiler.classes}" release="8" debug="true" nowarn="true"
+				includeAntRuntime="false" fork="true" encoding="UTF-8">
+			<src path="${compiler.dir}/src/generated"/>
+			<src path="${compiler.dir}/src/java"/>
+			<exclude name="org/bloqqi/tests/**"/>
+			<classpath>
+				<pathelement location="${compiler.tools}/beaver-rt.jar"/>
+				<pathelement location="${compiler.tools}/gson-2.6.2.jar"/>
+			</classpath>
+			<compilerarg value="-Xlint:-options"/>
+		</javac>
+		<copy todir="${compiler.classes}">
+			<fileset dir="${compiler.dir}/src/resource"/>
+		</copy>
+		<touch file="${build.dir}/compiler/stamp" mkdirs="true"/>
+	</target>
+
+	<!-- ===== Server ===== -->
+
+	<path id="server.classpath">
+		<path refid="compiler.classpath"/>
+		<fileset dir="${lib.dir}" includes="*.jar" excludes="junit-*.jar,hamcrest-*.jar"/>
+	</path>
+
+	<!-- Server and test classes are always recompiled (about a second): Ant's javac
+	     only compares timestamps, which can leave stale classes behind. -->
+	<target name="server" depends="deps,compiler" description="Compile the server">
+		<delete dir="${server.classes}"/>
+		<mkdir dir="${server.classes}"/>
+		<javac srcdir="server/src/main/java" destdir="${server.classes}" release="21"
+				debug="true" includeAntRuntime="false" encoding="UTF-8">
+			<classpath refid="server.classpath"/>
+			<compilerarg value="-Xlint:all,-serial,-processing"/>
+		</javac>
+		<copy todir="${server.classes}" failonerror="false">
+			<fileset dir="server/src/main/resources" erroronmissingdir="false"/>
+		</copy>
+	</target>
+
+	<!-- ===== Client ===== -->
+
+	<target name="client-install-check">
+		<available file="${client.dir}/node_modules" type="dir" property="client.installed"/>
+	</target>
+
+	<target name="client-install" depends="client-install-check" unless="client.installed"
+			description="npm ci (only if client/node_modules is missing)">
+		<exec executable="npm" dir="${client.dir}" failonerror="true">
+			<arg value="ci"/>
+		</exec>
+	</target>
+
+	<target name="client" depends="client-install" description="Build the client into client/dist">
+		<exec executable="npm" dir="${client.dir}" failonerror="true">
+			<arg value="run"/>
+			<arg value="build"/>
+		</exec>
+	</target>
+
+	<target name="build" depends="server,client" description="Build server and client"/>
+
+	<!-- ===== Tests ===== -->
+
+	<path id="test.classpath">
+		<path refid="server.classpath"/>
+		<pathelement location="${server.classes}"/>
+		<pathelement location="${test.classes}"/>
+		<fileset dir="${lib.dir}" includes="junit-*.jar,hamcrest-*.jar"/>
+	</path>
+
+	<target name="test-compile" depends="server">
+		<delete dir="${test.classes}"/>
+		<mkdir dir="${test.classes}"/>
+		<javac srcdir="server/src/test/java" destdir="${test.classes}" release="21"
+				debug="true" includeAntRuntime="false" encoding="UTF-8">
+			<classpath refid="test.classpath"/>
+		</javac>
+	</target>
+
+	<target name="test" depends="test-compile" description="Run the server (JUnit) tests">
+		<junit fork="true" forkmode="once" haltonfailure="false" failureproperty="tests.failed"
+				printsummary="false" dir="${basedir}">
+			<sysproperty key="bloqqi.examples" value="${examples}"/>
+			<classpath refid="test.classpath"/>
+			<formatter type="brief" usefile="false"/>
+			<batchtest>
+				<fileset dir="server/src/test/java" includes="**/*Test.java"/>
+			</batchtest>
+		</junit>
+		<fail if="tests.failed" message="Tests failed."/>
+	</target>
+
+	<target name="e2e" depends="build" description="Run the Playwright tests (starts the server itself)">
+		<exec executable="npx" dir="${client.dir}" failonerror="true">
+			<arg line="playwright test"/>
+		</exec>
+	</target>
+
+	<target name="e2e-workspace">
+		<delete dir="${e2e.workspace}"/>
+		<copy todir="${e2e.workspace}">
+			<fileset dir="${examples}" includes="*.dia"/>
+		</copy>
+		<!-- Only the drag test edits this file, so parallel tests don't see its changes. -->
+		<copy file="${examples}/TwoCounters.dia" tofile="${e2e.workspace}/Drag.dia"/>
+	</target>
+
+	<!-- Started by Playwright (client/playwright.config.ts). -->
+	<target name="e2e-server" depends="server,e2e-workspace">
+		<start-server workspace="${e2e.workspace}"/>
+	</target>
+
+	<!-- ===== Run ===== -->
+
+	<macrodef name="start-server">
+		<attribute name="workspace"/>
+		<sequential>
+			<java classname="org.bloqqi.web.Main" fork="true" failonerror="true">
+				<classpath>
+					<path refid="server.classpath"/>
+					<pathelement location="${server.classes}"/>
+				</classpath>
+				<arg value="--port"/>
+				<arg value="${port}"/>
+				<arg value="--workspace"/>
+				<arg file="@{workspace}"/>
+				<arg value="--static"/>
+				<arg value="${client.dist}"/>
+			</java>
+		</sequential>
+	</macrodef>
+
+	<target name="workspace-check">
+		<condition property="workspace.create">
+			<and>
+				<equals arg1="${workspace}" arg2="${default.workspace}"/>
+				<not><available file="${workspace}" type="dir"/></not>
+			</and>
+		</condition>
+	</target>
+
+	<target name="workspace" depends="workspace-check" if="workspace.create"
+			description="Create workspace/ as a copy of the compiler's examples">
+		<copy todir="${workspace}">
+			<fileset dir="${examples}" includes="*.dia"/>
+		</copy>
+	</target>
+
+	<target name="run" depends="server,workspace"
+			description="Start the server on workspace/ (-Dport=..., -Dworkspace=dir of .dia files)">
+		<start-server workspace="${workspace}"/>
+	</target>
+
+	<target name="clean" description="Remove build outputs (keeps lib/ and node_modules/)">
+		<delete dir="${build.dir}"/>
+		<delete dir="${client.dist}"/>
+	</target>
+</project>
