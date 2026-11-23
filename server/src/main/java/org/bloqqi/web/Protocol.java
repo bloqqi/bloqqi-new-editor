@@ -19,7 +19,9 @@ import com.google.gson.JsonParser;
  * client -> server  {"type":"move", "file", "diagramType", "nodes":[{id,x,y}]}
  * client -> server  {"type":"connect", "file", "diagramType",
  *                    "source":{node,handle}, "target":{node,handle}}
- * client -> server  {"type":"delete", "file", "diagramType", "edges":[id,...]}
+ * client -> server  {"type":"delete", "file", "diagramType", "edges":[id,...], "nodes":[id,...]}
+ *                   (nodes: blocks; optional)
+ * client -> server  {"type":"addBlock", "file", "diagramType", "typeName", "x", "y"}
  *                   (edits write the file and are answered with the new "diagram",
  *                    whose "change" is {before, after}: the file's text before and
  *                    after the edit; or with an "error" and the file unchanged)
@@ -29,11 +31,12 @@ import com.google.gson.JsonParser;
  * server -> client  {"type":"diagram", "file", "diagramType", "diagramTypes":[...],
  *                    "nodes":[{id,kind,label,typeName,inherited,inlined,error,x,y,width,height,
  *                              inPorts:[{name,typeName,y,connectable}], outPorts:[...],
- *                              inConnectable,outConnectable}],
+ *                              inConnectable,outConnectable,deletable}],
  *                    "edges":[{id,source,sourceHandle,target,targetHandle,
  *                              inherited,deletable,error,fromLiteral,intercept,largeMarker}],
  *                    "problems":[{line,column,message}],
  *                    "readOnly": null or why the diagram cannot be edited,
+ *                    "palette":[{name,group,kind,doc}],
  *                    "change": null, or {before, after} if the request changed the file}
  * server -> client  {"type":"error", "message"}
  * </pre>
@@ -49,7 +52,8 @@ final class Protocol {
 	}
 
 	/** A client -> server message. */
-	sealed interface Request permits OpenRequest, MoveRequest, ConnectRequest, DeleteRequest, RestoreRequest {
+	sealed interface Request
+			permits OpenRequest, MoveRequest, ConnectRequest, DeleteRequest, AddBlockRequest, RestoreRequest {
 		String file();
 	}
 
@@ -66,8 +70,13 @@ final class Protocol {
 			DiagramBuilder.Endpoint target) implements Request {
 	}
 
-	/** Delete connections (by edge id) and save the file. */
-	record DeleteRequest(String file, String diagramType, List<String> edges) implements Request {
+	/** Delete connections (edge ids) and blocks (node ids) and save the file. */
+	record DeleteRequest(String file, String diagramType, List<String> edges, List<String> nodes)
+			implements Request {
+	}
+
+	/** Add a block of a palette type at (x, y) and save the file. */
+	record AddBlockRequest(String file, String diagramType, String typeName, int x, int y) implements Request {
 	}
 
 	/** Undo/redo: replace the file's text with {@code text} if it is still {@code expected}. */
@@ -116,15 +125,12 @@ final class Protocol {
 					endpoint(o, "source"), endpoint(o, "target"));
 		}
 		if ("delete".equals(type)) {
-			JsonElement edges = o.get("edges");
-			if (edges == null || !edges.isJsonArray()) {
-				throw new IllegalArgumentException("delete needs edges");
-			}
-			List<String> ids = new ArrayList<>();
-			for (JsonElement e : edges.getAsJsonArray()) {
-				ids.add(e.getAsString());
-			}
-			return new DeleteRequest(string(o, "file"), required(o, "diagramType"), ids);
+			return new DeleteRequest(string(o, "file"), required(o, "diagramType"),
+					strings(o, "edges"), strings(o, "nodes"));
+		}
+		if ("addBlock".equals(type)) {
+			return new AddBlockRequest(string(o, "file"), required(o, "diagramType"), required(o, "typeName"),
+					integer(o, "x"), integer(o, "y"));
 		}
 		if ("restore".equals(type)) {
 			return new RestoreRequest(string(o, "file"), string(o, "diagramType"),
@@ -169,6 +175,7 @@ final class Protocol {
 			jn.add("outPorts", ports(n.outPorts()));
 			jn.addProperty("inConnectable", n.inConnectable());
 			jn.addProperty("outConnectable", n.outConnectable());
+			jn.addProperty("deletable", n.deletable());
 			nodes.add(jn);
 		}
 		o.add("nodes", nodes);
@@ -199,6 +206,16 @@ final class Protocol {
 		}
 		o.add("problems", problems);
 		o.addProperty("readOnly", d.readOnly());
+		JsonArray palette = new JsonArray();
+		for (Diagram.PaletteEntry p : d.palette()) {
+			JsonObject jp = new JsonObject();
+			jp.addProperty("name", p.name());
+			jp.addProperty("group", p.group());
+			jp.addProperty("kind", p.kind());
+			jp.addProperty("doc", p.doc());
+			palette.add(jp);
+		}
+		o.add("palette", palette);
 		if (change == null) {
 			o.add("change", com.google.gson.JsonNull.INSTANCE);
 		} else {
@@ -244,6 +261,18 @@ final class Protocol {
 			throw new IllegalArgumentException("Missing " + key);
 		}
 		return new DiagramBuilder.Endpoint(required(e.getAsJsonObject(), "node"), required(e.getAsJsonObject(), "handle"));
+	}
+
+	/** An optional array of strings (empty if missing). */
+	private static List<String> strings(JsonObject o, String key) {
+		JsonElement e = o.get(key);
+		List<String> values = new ArrayList<>();
+		if (e != null && e.isJsonArray()) {
+			for (JsonElement v : e.getAsJsonArray()) {
+				values.add(v.getAsString());
+			}
+		}
+		return values;
 	}
 
 	private static String required(JsonObject o, String key) {

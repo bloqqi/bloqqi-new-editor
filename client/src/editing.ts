@@ -6,15 +6,15 @@ import { createContext, useContext } from 'react';
 export interface Editing {
   /** The diagram can be edited (connected, not read-only). */
   editable: boolean;
-  /** Deletes these connections (edge ids). */
-  deleteConnections: (edgeIds: string[]) => void;
+  /** Deletes these connections (edge ids) and blocks (node ids), as one edit. */
+  deleteItems: (items: { edges?: string[]; nodes?: string[] }) => void;
   /** The edge id of the connection a literal feeds, if it can be deleted; else null. */
   literalConnection: (literalId: string) => string | null;
 }
 
 export const EditingContext = createContext<Editing>({
   editable: false,
-  deleteConnections: () => {},
+  deleteItems: () => {},
   literalConnection: () => null,
 });
 

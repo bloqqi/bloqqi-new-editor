@@ -86,10 +86,106 @@ body,
   color: #6b5200;
 }
 
+/* The palette and the canvas, side by side. */
+.workarea {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
 .canvas {
   position: relative;
   flex: 1;
+  min-width: 0;
   min-height: 0;
+}
+
+/* Palette: the types a block can be added of; entries are dragged onto the canvas. */
+.palette {
+  width: 170px;
+  flex: none;
+  overflow-y: auto;
+  padding: 8px 0;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.palette__title {
+  margin: 0;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.palette__hint {
+  margin: 0 0 6px;
+  padding: 0 12px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.palette__group summary {
+  padding: 4px 12px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.palette__count {
+  font-weight: normal;
+}
+
+.palette__group ul {
+  margin: 0 0 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.palette__entry {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 1px 8px;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: grab;
+  user-select: none;
+}
+
+.palette__entry:hover {
+  background: #eef2fd;
+  border-color: #c9d6f8;
+}
+
+.palette__entry:active {
+  cursor: grabbing;
+}
+
+.palette__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette__kind {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.palette__empty {
+  margin: 0 0 6px;
+  padding: 0 20px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.palette--disabled .palette__entry {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 /*
@@ -379,6 +475,13 @@ body,
   color: #ffffff;
   background: var(--flow-error);
   border-color: var(--flow-error);
+}
+
+/* Below the block, centred: its sides have the ports, and above it could be cut off at the top edge. */
+.delete-button--block {
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
 }
 
 /* Below the literal: literals sit near the left edge, where a button to their left could be cut off. */

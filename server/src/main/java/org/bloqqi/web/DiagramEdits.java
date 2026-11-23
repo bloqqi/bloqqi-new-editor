@@ -15,6 +15,8 @@ import java.util.TreeMap;
 
 import org.bloqqi.compiler.ast.ASTNode;
 import org.bloqqi.compiler.ast.Anchor;
+import org.bloqqi.compiler.ast.Block;
+import org.bloqqi.compiler.ast.InheritedBlock;
 import org.bloqqi.compiler.ast.Annotation;
 import org.bloqqi.compiler.ast.BloqqiParser;
 import org.bloqqi.compiler.ast.BloqqiScanner;
@@ -77,12 +79,7 @@ public final class DiagramEdits {
 			}
 		}
 
-		// Existing entries, keyed by their text without whitespace (e.g. "P::K").
-		TreeMap<String, Layout.Rect> entries = new TreeMap<>();
-		for (Annotation a : dt.getAnnotations()) {
-			String key = source.text(a.getVarUse()).replaceAll("\\s+", "");
-			entries.put(key, new Layout.Rect(a.getX(), a.getY(), a.getWidth(), a.getHeight()));
-		}
+		TreeMap<String, Layout.Rect> entries = annotations(source, dt);
 		// The current layout of every node, as shown...
 		for (DiagramNode n : nodes.values()) {
 			entries.put(n.id(), new Layout.Rect(n.x(), n.y(), n.width(), n.height()));
@@ -96,26 +93,118 @@ public final class DiagramEdits {
 			entries.put(n.id(), new Layout.Rect(m.x(), m.y(), n.width(), n.height()));
 		}
 
+		String newText = apply(source.text(), List.of(annotationEdit(source, dt, entries)));
+		check(file, newText);
+		return newText;
+	}
+
+	/** A replacement of the text in [start, end). */
+	record TextEdit(int start, int end, String text) {
+	}
+
+	/** Applies non-overlapping edits to a text. */
+	static String apply(String text, List<TextEdit> edits) {
+		List<TextEdit> sorted = new ArrayList<>(edits);
+		sorted.sort(Comparator.comparingInt(TextEdit::start).reversed());
+		StringBuilder b = new StringBuilder(text);
+		int limit = Integer.MAX_VALUE;
+		for (TextEdit e : sorted) {
+			if (e.end() > limit) {
+				throw new IllegalStateException("Overlapping edits");
+			}
+			b.replace(e.start(), e.end(), e.text());
+			limit = e.start();
+		}
+		return b.toString();
+	}
+
+	/** The type's annotation entries, keyed by their text without whitespace (e.g. "P::K"). */
+	private static TreeMap<String, Layout.Rect> annotations(SourceText source, DiagramType dt) {
+		TreeMap<String, Layout.Rect> entries = new TreeMap<>();
+		for (Annotation a : dt.getAnnotations()) {
+			String key = source.text(a.getVarUse()).replaceAll("\\s+", "");
+			entries.put(key, new Layout.Rect(a.getX(), a.getY(), a.getWidth(), a.getHeight()));
+		}
+		return entries;
+	}
+
+	/**
+	 * The edit that makes the type's {@code annotation(...)} block hold exactly
+	 * these entries, sorted by key as the old editor wrote them: the block is
+	 * replaced, or inserted after the type's closing brace (before any
+	 * {@code wiring}), or removed with its line(s) if there are no entries.
+	 */
+	private static TextEdit annotationEdit(SourceText source, DiagramType dt, TreeMap<String, Layout.Rect> entries) {
 		String nl = source.lineSeparator();
 		StringJoiner block = new StringJoiner("," + nl, "annotation(" + nl, nl + ")");
 		entries.forEach((key, r) -> block.add(
 				"  " + key + " = (" + r.x() + ", " + r.y() + ", " + r.width() + ", " + r.height() + ")"));
 
-		String text = source.text();
-		String newText;
 		if (dt.getNumAnnotation() > 0) {
 			// The annotation list spans from the "annotation" keyword to its ")".
 			int start = source.start(dt.getAnnotationList());
 			int end = source.end(dt.getAnnotationList());
-			newText = text.substring(0, start) + block + text.substring(end);
-		} else if (dt.hasLocalWiring()) {
-			int at = source.start(dt.getLocalWiring());
-			newText = text.substring(0, at) + block + nl + text.substring(at);
-		} else {
-			int at = source.end(dt);
-			newText = text.substring(0, at) + nl + block + text.substring(at);
+			if (entries.isEmpty()) {
+				int[] lines = statementLines(source, start, end);
+				return new TextEdit(lines[0], lines[1], "");
+			}
+			return new TextEdit(start, end, block.toString());
 		}
-		check(file, newText);
+		if (entries.isEmpty()) {
+			return new TextEdit(0, 0, "");
+		}
+		if (dt.hasLocalWiring()) {
+			int at = source.start(dt.getLocalWiring());
+			return new TextEdit(at, at, block + nl);
+		}
+		int at = source.end(dt);
+		return new TextEdit(at, at, nl + block);
+	}
+
+	/**
+	 * Adds a block of a palette type to a top-level diagram type, at (x, y):
+	 * inserts {@code Type_N;} (simple name form, the first free N, as the old
+	 * editor named blocks by default) after the type's last variable or block
+	 * declaration, and stores its position. The other nodes keep their current
+	 * positions (the type's whole layout is stored, as for a move).
+	 *
+	 * @throws IllegalArgumentException if the type is not in the palette or the
+	 *         block would give errors (e.g. a type cycle)
+	 */
+	public static String addBlock(LoadedFile file, String diagramTypeName, String typeName, int x, int y) {
+		requireEditable(file);
+		DiagramType dt = topLevelDiagramType(file, diagramTypeName);
+		Diagram before = DiagramBuilder.build(file, diagramTypeName);
+		if (before.palette().stream().noneMatch(e -> e.name().equals(typeName))) {
+			throw new IllegalArgumentException("Cannot add a block of " + typeName + " to " + dt.name());
+		}
+		String name = null;
+		for (int n = 1; name == null; n++) {
+			if (dt.lookup(typeName + "_" + n) == null) {
+				name = typeName + "_" + n;
+			}
+		}
+
+		List<ASTNode<?>> declarations = new ArrayList<>();
+		dt.getLocalVariableList().forEach(declarations::add);
+		dt.getLocalBlockList().forEach(declarations::add);
+		String withBlock = insertStatement(new SourceText(file.source()), dt, name + ";", declarations);
+		LoadedFile added = check(file, withBlock);
+
+		// Keep everything where it is shown now, and put the new block at (x, y).
+		List<Move> positions = new ArrayList<>();
+		for (DiagramNode n : before.nodes()) {
+			if (!n.kind().equals(Diagram.LITERAL)) {
+				positions.add(new Move(n.id(), n.x(), n.y()));
+			}
+		}
+		positions.add(new Move(name, Math.max(0, x), Math.max(0, y)));
+		String newText = moveNodes(added, diagramTypeName, positions);
+		String id = name;
+		if (DiagramBuilder.build(BloqqiLoader.load(file.fileName(), newText), diagramTypeName).nodes().stream()
+				.noneMatch(n -> n.id().equals(id))) {
+			throw new IllegalStateException("Could not add " + name + " to " + dt.name());
+		}
 		return newText;
 	}
 
@@ -155,7 +244,12 @@ public final class DiagramEdits {
 		}
 
 		String statement = "connect(" + accessText(s) + ", " + accessText(t) + ");";
-		String newText = insertStatement(new SourceText(file.source()), diagram.diagramType(), statement);
+		DiagramType dt = diagram.diagramType();
+		List<ASTNode<?>> statements = new ArrayList<>();
+		dt.getLocalVariableList().forEach(statements::add);
+		dt.getLocalBlockList().forEach(statements::add);
+		dt.getFlowDeclList().forEach(statements::add);
+		String newText = insertStatement(new SourceText(file.source()), dt, statement, statements);
 		LoadedFile after = check(file, newText);
 		boolean connected = DiagramBuilder.build(after, diagramTypeName).edges().stream().anyMatch(e ->
 				e.source().equals(source.node()) && e.sourceHandle().equals(source.handle())
@@ -166,21 +260,34 @@ public final class DiagramEdits {
 		return newText;
 	}
 
-	/**
-	 * Deletes connections, given as edge ids, by removing the statements that
-	 * declare them (docs/editor-spec.md §3.4): the {@code connect(...)}, or the
-	 * whole {@code intercept ...} for either half of an interception. Only
-	 * connections declared in the type itself can be deleted
-	 * ({@code Connection.canDelete()}), not inherited ones or those inside
-	 * inlined blocks.
-	 *
-	 * @throws IllegalArgumentException if an edge does not exist or cannot be deleted
-	 */
+	/** Deletes connections, given as edge ids; see {@link #delete}. */
 	public static String deleteConnections(LoadedFile file, String diagramTypeName, List<String> edgeIds) {
+		return delete(file, diagramTypeName, edgeIds, List.of());
+	}
+
+	/**
+	 * Deletes connections (edge ids) and blocks (node ids) in one edit
+	 * (docs/editor-spec.md §3.4):
+	 * <ul>
+	 * <li>a connection: the statement that declares it, i.e. the {@code connect(...)},
+	 *     or the whole {@code intercept ...} for either half of an interception;</li>
+	 * <li>a block: its declaration, the statements of all connections on its
+	 *     ports, and its entry in the type's annotation block.</li>
+	 * </ul>
+	 * Only what is declared in the type's own body can be deleted: not inherited
+	 * connections and blocks, not those inside inlined blocks, not those coming
+	 * from a {@code wiring}. If something else still refers to a deleted block
+	 * (e.g. a subtype), the edit is refused because it would add errors.
+	 *
+	 * @throws IllegalArgumentException if something does not exist or cannot be deleted
+	 */
+	public static String delete(LoadedFile file, String diagramTypeName, List<String> edgeIds, List<String> nodeIds) {
 		requireEditable(file);
 		DiagramBuilder.Builder diagram = DiagramBuilder.resolve(file, diagramTypeName);
 		DiagramType dt = diagram.diagramType();
-		Set<FlowDecl> declarations = new LinkedHashSet<>();
+		SourceText source = new SourceText(file.source());
+
+		Set<FlowDecl> flows = new LinkedHashSet<>();
 		for (String id : edgeIds) {
 			InheritedConnection c = diagram.connection(id);
 			if (c == null) {
@@ -190,22 +297,70 @@ public final class DiagramEdits {
 				throw new IllegalArgumentException("Connection " + id + " is not declared in " + dt.name()
 						+ " (it is inherited, inside an inlined block, or comes from a wiring)");
 			}
-			declarations.add(c.getDeclaredFlowDecl());
+			flows.add(c.getDeclaredFlowDecl());
 		}
 
-		SourceText source = new SourceText(file.source());
-		List<int[]> ranges = new ArrayList<>();
-		for (FlowDecl d : declarations) {
-			ranges.add(statementLines(source, source.start(d), source.end(d)));
+		List<Block> blocks = new ArrayList<>();
+		Set<String> blockIds = new HashSet<>();
+		for (String id : nodeIds) {
+			InheritedBlock b = null;
+			for (InheritedBlock candidate : dt.getBlocks()) {
+				if (candidate.accessString().equals(id)) {
+					b = candidate;
+				}
+			}
+			if (b == null) {
+				throw new IllegalArgumentException("No block " + id + " in " + dt.name());
+			}
+			if (!DiagramBuilder.isDeletable(b, dt)) {
+				throw new IllegalArgumentException("Block " + id + " is not declared in " + dt.name()
+						+ " (it is inherited or inlined)");
+			}
+			blocks.add(b.getDeclaredBlock());
+			blockIds.add(id);
 		}
-		ranges.sort(Comparator.comparingInt((int[] r) -> r[0]).reversed());
-		StringBuilder text = new StringBuilder(file.source());
-		for (int[] r : ranges) {
-			text.delete(r[0], r[1]);
+		// The connections on the deleted blocks' ports (and literals feeding them).
+		if (!blockIds.isEmpty()) {
+			for (InheritedConnection c : dt.getConnections()) {
+				String s = nodeOf(c.getSource().anchor());
+				String t = nodeOf(c.getTarget().anchor());
+				if ((blockIds.contains(s) || blockIds.contains(t)) && DiagramBuilder.isDeletable(c, dt)) {
+					flows.add(c.getDeclaredFlowDecl());
+				}
+			}
 		}
-		String newText = text.toString();
+
+		List<TextEdit> edits = new ArrayList<>();
+		for (FlowDecl d : flows) {
+			int[] r = statementLines(source, source.start(d), source.end(d));
+			edits.add(new TextEdit(r[0], r[1], ""));
+		}
+		if (!blocks.isEmpty()) {
+			int close = bodyBraces(source, dt)[1];
+			for (Block b : blocks) {
+				int start = source.start(b);
+				int end = semicolonAfter(source.text(), source.end(b), close);
+				int[] r = statementLines(source, start, end);
+				edits.add(new TextEdit(r[0], r[1], ""));
+			}
+			TreeMap<String, Layout.Rect> entries = annotations(source, dt);
+			if (entries.keySet().removeAll(blockIds)) {
+				edits.add(annotationEdit(source, dt, entries));
+			}
+		}
+		String newText = apply(file.source(), edits);
 		check(file, newText);
 		return newText;
+	}
+
+	/** The node id (access string) an anchor belongs to, or null (literals). */
+	private static String nodeOf(Anchor a) {
+		if (a instanceof Port p) {
+			return p.block().accessString();
+		}
+		return a instanceof org.bloqqi.compiler.ast.Node n && !(a instanceof org.bloqqi.compiler.ast.Literal)
+				? n.accessString()
+				: null;
 	}
 
 	/**
@@ -229,31 +384,50 @@ public final class DiagramEdits {
 	}
 
 	/**
-	 * Inserts a statement at the end of a diagram type's body, on its own line
-	 * with the indentation of the last statement. Trailing comments on that line
-	 * stay where they are.
+	 * Inserts a statement into a diagram type's body, on its own line: after the
+	 * last of {@code after} (with its indentation), or, if none of them is
+	 * written, before the body's first statement, or into the empty body.
+	 * Trailing comments on the line before stay where they are.
 	 */
-	static String insertStatement(SourceText source, DiagramType dt, String statement) {
+	static String insertStatement(SourceText source, DiagramType dt, String statement, List<ASTNode<?>> after) {
 		String text = source.text();
 		String nl = source.lineSeparator();
 		int[] braces = bodyBraces(source, dt);
 		int open = braces[0];
 		int close = braces[1];
 
-		// The end (after its ';') of the last statement in the body.
+		// The end (after its ';') of the last of "after".
 		int lastStart = -1;
 		int lastEnd = -1;
-		List<ASTNode<?>> statements = new ArrayList<>();
-		dt.getLocalVariableList().forEach(statements::add);
-		dt.getLocalBlockList().forEach(statements::add);
-		dt.getFlowDeclList().forEach(statements::add);
-		for (ASTNode<?> n : statements) {
+		for (ASTNode<?> n : after) {
 			if (SourceText.hasPosition(n)) {
 				int end = semicolonAfter(text, source.end(n), close);
 				if (end > lastEnd) {
 					lastEnd = end;
 					lastStart = source.start(n);
 				}
+			}
+		}
+
+		if (lastEnd < 0) {
+			// Before the first statement of the body, if there is one.
+			int first = Integer.MAX_VALUE;
+			List<ASTNode<?>> statements = new ArrayList<>();
+			dt.getLocalVariableList().forEach(statements::add);
+			dt.getLocalBlockList().forEach(statements::add);
+			dt.getFlowDeclList().forEach(statements::add);
+			for (ASTNode<?> n : statements) {
+				if (SourceText.hasPosition(n)) {
+					first = Math.min(first, source.start(n));
+				}
+			}
+			if (first != Integer.MAX_VALUE) {
+				String indent = indentation(text, first);
+				int lineStart = first - indent.length();
+				if (text.substring(lineStart, first).isBlank()) {
+					return text.substring(0, lineStart) + indent + statement + nl + text.substring(lineStart);
+				}
+				return text.substring(0, first) + statement + " " + text.substring(first);
 			}
 		}
 

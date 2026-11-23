@@ -110,7 +110,7 @@ export function FlowEdge({ id, sourceX, sourceY, targetX, targetY, data, markerE
   if (isSelected && data.deletable && editing.editable) {
     const [mx, my] = splitAtMiddle(points).mid;
     deleteButton = (
-      <DeleteButton x={mx} y={my} label="Delete connection" onClick={() => editing.deleteConnections([id])} />
+      <DeleteButton x={mx} y={my} label="Delete connection" onClick={() => editing.deleteItems({ edges: [id] })} />
     );
   }
 

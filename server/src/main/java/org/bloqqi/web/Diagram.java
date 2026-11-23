@@ -13,6 +13,7 @@ import java.util.List;
  * @param problems     syntax and semantic errors of the whole file
  * @param readOnly     why the diagram cannot be edited, or null if it can
  *                     ({@link DiagramEdits#readOnlyReason})
+ * @param palette      the types a block can be added of, in the old editor's order
  */
 public record Diagram(
 		String file,
@@ -21,7 +22,25 @@ public record Diagram(
 		List<DiagramNode> nodes,
 		List<DiagramEdge> edges,
 		List<Problem> problems,
-		String readOnly) {
+		String readOnly,
+		List<PaletteEntry> palette) {
+
+	/** Palette groups. */
+	public static final String LOCAL = "local";
+	public static final String STANDARD = "standard";
+
+	/**
+	 * A type in the palette (docs/editor-spec.md §3.1): the file's own diagram
+	 * types (not the shown one, not abstract), functions, external functions and
+	 * state machines, then the standard library's.
+	 *
+	 * @param name  the type's name
+	 * @param group {@link #LOCAL} or {@link #STANDARD}
+	 * @param kind  {@code diagramType}, {@code function}, {@code externalFunction} or {@code stateMachine}
+	 * @param doc   first line of its doc string, or null
+	 */
+	public record PaletteEntry(String name, String group, String kind, String doc) {
+	}
 
 	/** Kinds of nodes on the canvas. */
 	public static final String BLOCK = "block";
@@ -66,6 +85,8 @@ public record Diagram(
 	 * @param inConnectable  a new connection may end at the {@code in} handle (not for blocks;
 	 *                       see {@link DiagramPort#connectable})
 	 * @param outConnectable a new connection may start at the {@code out} handle
+	 * @param deletable      can be deleted here: a block declared in this type's body
+	 *                       (not inherited or inlined)
 	 */
 	public record DiagramNode(
 			String id,
@@ -82,7 +103,8 @@ public record Diagram(
 			List<DiagramPort> inPorts,
 			List<DiagramPort> outPorts,
 			boolean inConnectable,
-			boolean outConnectable) {
+			boolean outConnectable,
+			boolean deletable) {
 	}
 
 	/**

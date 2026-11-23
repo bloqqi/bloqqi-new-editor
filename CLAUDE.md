@@ -39,6 +39,16 @@
   dataflow cycle. Deleting removes the declaring statement (the whole
   `intercept` for an interception half) and its line. Not supported yet:
   literals, struct-field connections (`a.status.level`), inlined-block ports.
+- Blocks (`DiagramEdits.addBlock` / `delete`): dragging a palette type onto
+  the canvas inserts `Type_N;` (first free N) after the last variable/block
+  declaration (the grammar puts blocks before connections) and stores the
+  whole layout with the new block at the drop point. Deleting a block removes
+  its declaration, the statements of all connections on its ports and its
+  annotation entry, in one edit; if anything else still uses it (e.g. a
+  subtype), the reparse check refuses. The palette follows the old editor:
+  the file's types except the shown one and abstract ones, then the standard
+  library. Not supported yet: naming on drop, the feature/specialisation
+  wizards, parameters and variables.
 - Edits are checked by reparsing before anything is written; an edit that adds
   syntax errors or more semantic errors is refused. Files with syntax errors
   are not edited. Writes go through a temp file and an atomic move.

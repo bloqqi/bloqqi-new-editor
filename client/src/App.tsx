@@ -13,6 +13,7 @@ import { Canvas, type Extent } from './Canvas';
 import { canConnect } from './connections';
 import { EditingContext, type Editing } from './editing';
 import { UndoHistory } from './history';
+import { Palette } from './Palette';
 import { type FlowEdgeType } from './FlowEdge';
 import { type DiagramFlowNode } from './nodes';
 import {
@@ -407,10 +408,19 @@ export function App() {
   );
 
   /** Delete the selected connections; a selected literal stands for the connection it feeds. */
-  const deleteConnections = useCallback(
-    (edgeIds: string[]) => {
-      if (diagram?.diagramType && edgeIds.length > 0) {
-        send({ type: 'delete', file: diagram.file, diagramType: diagram.diagramType, edges: edgeIds });
+  const deleteItems = useCallback(
+    ({ edges: edgeIds = [], nodes: nodeIds = [] }: { edges?: string[]; nodes?: string[] }) => {
+      if (diagram?.diagramType && edgeIds.length + nodeIds.length > 0) {
+        send({ type: 'delete', file: diagram.file, diagramType: diagram.diagramType, edges: edgeIds, nodes: nodeIds });
+      }
+    },
+    [diagram, send],
+  );
+
+  const addBlock = useCallback(
+    (typeName: string, x: number, y: number) => {
+      if (diagram?.diagramType) {
+        send({ type: 'addBlock', file: diagram.file, diagramType: diagram.diagramType, typeName, x, y });
       }
     },
     [diagram, send],
@@ -422,26 +432,29 @@ export function App() {
     [diagram],
   );
 
+  /** Delete/Backspace: the selected connections, literals (their connections) and blocks, as one edit. */
   const onDelete = useCallback(
     ({ nodes: selectedNodes, edges: selectedEdges }: { nodes: DiagramFlowNode[]; edges: FlowEdgeType[] }) => {
-      const ids = new Set(selectedEdges.filter((e) => e.data?.deletable).map((e) => e.id));
+      const edgeIds = new Set(selectedEdges.filter((e) => e.data?.deletable).map((e) => e.id));
+      const nodeIds: string[] = [];
       for (const n of selectedNodes) {
         const id = literalConnections.get(n.id);
-        if (id) ids.add(id);
+        if (id) edgeIds.add(id);
+        else if (n.type === 'block' && n.data.deletable) nodeIds.push(n.id);
       }
-      deleteConnections([...ids]);
+      deleteItems({ edges: [...edgeIds], nodes: nodeIds });
     },
-    [literalConnections, deleteConnections],
+    [literalConnections, deleteItems],
   );
 
   const editable = status === 'open' && !!diagram?.diagramType && !diagram.readOnly;
   const editing = useMemo<Editing>(
     () => ({
       editable,
-      deleteConnections,
+      deleteItems,
       literalConnection: (literalId) => literalConnections.get(literalId) ?? null,
     }),
-    [editable, deleteConnections, literalConnections],
+    [editable, deleteItems, literalConnections],
   );
 
   // Edges are controlled too, so that they can be selected (for Delete); every
@@ -513,31 +526,35 @@ export function App() {
         </div>
       )}
 
-      <main className="canvas" data-fitted={fittedKey === diagramKey}>
-        {diagram && !diagram.diagramType && (
-          <p className="empty">
-            {diagram.problems.length > 0
-              ? `${diagram.file} could not be parsed.`
-              : `${diagram.file} has no diagram types.`}
-          </p>
-        )}
-        <EditingContext.Provider value={editing}>
-          <Canvas
-            key={diagramKey}
-            diagram={diagram}
-            nodes={nodes}
-            edges={edges}
-            editable={editable}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onNodeDragStop={onNodeDragStop}
-            onConnect={onConnect}
-            isValidConnection={isValidConnection}
-            onDelete={onDelete}
-            onFitted={onFitted}
-          />
-        </EditingContext.Provider>
-      </main>
+      <div className="workarea">
+        {diagram?.diagramType && <Palette entries={diagram.palette} editable={editable} />}
+        <main className="canvas" data-fitted={fittedKey === diagramKey}>
+          {diagram && !diagram.diagramType && (
+            <p className="empty">
+              {diagram.problems.length > 0
+                ? `${diagram.file} could not be parsed.`
+                : `${diagram.file} has no diagram types.`}
+            </p>
+          )}
+          <EditingContext.Provider value={editing}>
+            <Canvas
+              key={diagramKey}
+              diagram={diagram}
+              nodes={nodes}
+              edges={edges}
+              editable={editable}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onNodeDragStop={onNodeDragStop}
+              onConnect={onConnect}
+              isValidConnection={isValidConnection}
+              onDelete={onDelete}
+              onAddBlock={addBlock}
+              onFitted={onFitted}
+            />
+          </EditingContext.Provider>
+        </main>
+      </div>
 
       {diagram && diagram.problems.length > 0 && (
         <section className="problems" data-testid="problems">

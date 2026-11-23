@@ -18,6 +18,7 @@ import {
   type OnNodeDrag,
 } from '@xyflow/react';
 import { edgeTypes, type FlowEdgeType } from './FlowEdge';
+import { PALETTE_MIME } from './Palette';
 import { nodeTypes, type DiagramFlowNode } from './nodes';
 import type { DiagramMessage } from './protocol';
 
@@ -41,6 +42,9 @@ const NODE_EXTENT: Extent = [
 const OUTSIDE_PX = 16;
 
 const FIT_OPTIONS = { padding: 0.2, maxZoom: 1.5 };
+
+/** Width of a new block (Layout.DEFAULT_WIDTH on the server). */
+const BLOCK_WIDTH = 60;
 
 /**
  * Top-left corner of what is drawn, in flow coordinates: the origin, unless a
@@ -71,6 +75,8 @@ export interface CanvasProps {
   isValidConnection: IsValidConnection<FlowEdgeType>;
   /** Called with the selection when Delete/Backspace is pressed; React Flow itself deletes nothing. */
   onDelete: (selection: { nodes: DiagramFlowNode[]; edges: FlowEdgeType[] }) => void;
+  /** A palette entry was dropped: add a block of the type with its top-left corner at (x, y). */
+  onAddBlock: (typeName: string, x: number, y: number) => void;
   /** Called once the initial view of the diagram has been fitted. */
   onFitted: () => void;
 }
@@ -98,8 +104,32 @@ function Flow({
   onConnect,
   isValidConnection,
   onDelete,
+  onAddBlock,
   onFitted,
 }: CanvasProps) {
+  const flow = useReactFlow();
+
+  // Dropping a palette entry adds a block, centred under the pointer.
+  const onDragOver = useCallback(
+    (event: React.DragEvent) => {
+      if (editable && event.dataTransfer.types.includes(PALETTE_MIME)) {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+      }
+    },
+    [editable],
+  );
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      const typeName = event.dataTransfer.getData(PALETTE_MIME);
+      if (!editable || !typeName) return;
+      event.preventDefault();
+      const p = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
+      onAddBlock(typeName, Math.max(0, Math.round(p.x - BLOCK_WIDTH / 2)), Math.max(0, Math.round(p.y - 10)));
+    },
+    [editable, flow, onAddBlock],
+  );
+
   // Deleting is an edit of the file: hand the selection to the app and let
   // React Flow delete nothing; the server's answer replaces the diagram.
   const onBeforeDelete = useCallback<OnBeforeDelete<DiagramFlowNode, FlowEdgeType>>(
@@ -139,6 +169,8 @@ function Flow({
       isValidConnection={isValidConnection}
       connectionLineType={ConnectionLineType.Step}
       onBeforeDelete={onBeforeDelete}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
       deleteKeyCode={editable ? DELETE_KEYS : null}
       edgesFocusable={false}
       proOptions={{ hideAttribution: true }}

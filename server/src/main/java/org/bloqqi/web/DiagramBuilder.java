@@ -72,7 +72,7 @@ public final class DiagramBuilder {
 		problems.addAll(file.semanticErrors());
 		if (!file.isParsed()) {
 			return new Diagram(file.fileName(), null, List.of(), List.of(), List.of(), problems,
-					DiagramEdits.readOnlyReason(file));
+					DiagramEdits.readOnlyReason(file), List.of());
 		}
 
 		CompilationUnit cu = file.compilationUnit();
@@ -84,9 +84,11 @@ public final class DiagramBuilder {
 						"No diagram type " + diagramTypeName + " in " + file.fileName());
 			}
 			return new Diagram(file.fileName(), null, names, List.of(), List.of(), problems,
-					DiagramEdits.readOnlyReason(file));
+					DiagramEdits.readOnlyReason(file), List.of());
 		}
-		return new Builder(dt).build(file.fileName(), names, problems, DiagramEdits.readOnlyReason(file));
+		Diagram d = new Builder(dt).build(file.fileName(), names, problems, DiagramEdits.readOnlyReason(file));
+		return new Diagram(d.file(), d.diagramType(), d.diagramTypes(), d.nodes(), d.edges(), d.problems(),
+				d.readOnly(), palette(file, dt));
 	}
 
 	/**
@@ -201,7 +203,7 @@ public final class DiagramBuilder {
 						largeMarker));
 			}
 			result.addAll(literals.values());
-			return new Diagram(fileName, dt.name(), names, result, edges, problems, readOnly);
+			return new Diagram(fileName, dt.name(), names, result, edges, problems, readOnly, List.of());
 		}
 
 		DiagramType diagramType() {
@@ -267,12 +269,14 @@ public final class DiagramBuilder {
 			boolean error = false;
 			boolean inConnectable = false;
 			boolean outConnectable = false;
+			boolean deletable = false;
 			List<DiagramPort> in = List.of();
 			List<DiagramPort> out = List.of();
 			if (n instanceof Block b) {
 				kind = Diagram.BLOCK;
 				typeName = b.type().name();
 				error = b.isOnTypeCycle() || b.isDataflowCircular();
+				deletable = b instanceof InheritedBlock ib && isDeletable(ib, dt);
 				in = ports(b.getInPorts());
 				out = ports(b.getOutPorts());
 			} else if (n instanceof Parameter p) {
@@ -289,7 +293,7 @@ public final class DiagramBuilder {
 			}
 			return new DiagramNode(id, kind, labels.get(id), typeName,
 					n.isInherited(), n.isInlined(), error,
-					r.x(), r.y(), r.width(), r.height(), in, out, inConnectable, outConnectable);
+					r.x(), r.y(), r.width(), r.height(), in, out, inConnectable, outConnectable, deletable);
 		}
 
 		/** A literal is drawn left of its target, level with the target port (LiteralPart). */
@@ -310,7 +314,7 @@ public final class DiagramBuilder {
 			}
 			int x = r.x() - width - LITERAL_GAP;
 			return new DiagramNode("#literal:" + target, Diagram.LITERAL, text, lit.type().name(),
-					false, false, false, x, y, width, LITERAL_HEIGHT, List.of(), List.of(), false, false);
+					false, false, false, x, y, width, LITERAL_HEIGHT, List.of(), List.of(), false, false, false);
 		}
 
 		private static List<DiagramPort> ports(Iterable<Port> ports) {
@@ -333,6 +337,65 @@ public final class DiagramBuilder {
 	static boolean isDeletable(InheritedConnection c, DiagramType dt) {
 		org.bloqqi.compiler.ast.FlowDecl declared = c.getDeclaredFlowDecl();
 		return c.canDelete() && declared != null && isDeclaredIn(declared, dt);
+	}
+
+	/**
+	 * Whether the block can be deleted here: not inherited or inlined, and
+	 * declared by a statement in this type's body.
+	 */
+	static boolean isDeletable(InheritedBlock b, DiagramType dt) {
+		Block declared = b.getDeclaredBlock();
+		var list = dt.getLocalBlockList();
+		return b.canDelete() && declared != null && declared.getParent() == list
+				&& within(declared, list);
+	}
+
+	/** Whether a node's source position lies within another's. */
+	private static boolean within(ASTNode<?> inner, ASTNode<?> outer) {
+		return SourceText.hasPosition(inner) && SourceText.hasPosition(outer)
+				&& SourceText.compare(inner.getStartLine(), inner.getStartColumn(),
+						outer.getStartLine(), outer.getStartColumn()) >= 0
+				&& SourceText.compare(inner.getEndLine(), inner.getEndColumn(),
+						outer.getEndLine(), outer.getEndColumn()) <= 0;
+	}
+
+	/**
+	 * The palette for a diagram type (Palette.java in the old editor): the file's
+	 * types except the shown one, then the standard library's; diagram types that
+	 * are not abstract, functions, external functions and state machines.
+	 */
+	static List<Diagram.PaletteEntry> palette(LoadedFile file, DiagramType shown) {
+		List<Diagram.PaletteEntry> entries = new ArrayList<>();
+		for (TypeDecl td : file.compilationUnit().typeDecls()) {
+			if (td != shown && inPalette(td)) {
+				entries.add(paletteEntry(td, Diagram.LOCAL));
+			}
+		}
+		for (TypeDecl td : file.program().getStandardLibrary().typeDecls()) {
+			if (inPalette(td)) {
+				entries.add(paletteEntry(td, Diagram.STANDARD));
+			}
+		}
+		return entries;
+	}
+
+	private static boolean inPalette(TypeDecl td) {
+		return (td.isDiagramType() && !td.isAbstract()) || td.isFunction() || td.isExternalFunction()
+				|| td.isStateMachine();
+	}
+
+	private static Diagram.PaletteEntry paletteEntry(TypeDecl td, String group) {
+		String kind = td.isDiagramType() ? "diagramType"
+				: td.isFunction() ? "function"
+				: td.isExternalFunction() ? "externalFunction"
+				: "stateMachine";
+		String doc = null;
+		if (td instanceof org.bloqqi.compiler.ast.UserDefType u && u.hasDocString()) {
+			String content = u.getDocString().getDoc().getContent().trim();
+			int nl = content.indexOf('\n');
+			doc = nl > 0 ? content.substring(0, nl).trim() : content;
+		}
+		return new Diagram.PaletteEntry(td.name(), group, kind, doc);
 	}
 
 	/** Whether the statement is one of those written in the body of the type. */

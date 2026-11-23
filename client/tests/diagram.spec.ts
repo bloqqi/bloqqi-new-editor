@@ -63,6 +63,15 @@ test('switches diagram type within a file', async ({ page }) => {
   await expect(node(page, 'sub')).toHaveText('sub');
 });
 
+test('the page has an icon', async ({ page }) => {
+  await page.goto('/');
+  const href = await page.locator('link[rel="icon"]').getAttribute('href');
+  expect(href).toBe('/favicon.svg');
+  const response = await page.request.get(href!);
+  expect(response.status()).toBe(200);
+  expect(response.headers()['content-type']).toContain('image/svg+xml');
+});
+
 test('reports problems for a file that does not parse', async ({ page }) => {
   await page.goto('/?file=Example-Pregulator.dia'); // no nodes, so never fitted
   await expect(page.getByText('Example-Pregulator.dia could not be parsed.')).toBeVisible();
@@ -400,6 +409,66 @@ test.describe.serial('moving nodes', () => {
     await expect(page.getByTestId('undo')).toBeDisabled();
     expect(readFileSync(dragFile, 'utf8')).toBe(external);
   });
+
+  // Blocks (still Drag.dia).
+
+  test('dragging a type from the palette adds a block; its × deletes it', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Acc');
+    await page.getByText('Standard library').click(); // collapsed, as in the old editor
+    await page
+      .getByTestId('palette-Add')
+      .dragTo(page.locator('.react-flow__pane'), { targetPosition: { x: 320, y: 260 } });
+
+    await expect(node(page, 'Add_1')).toBeVisible();
+    await expect(node(page, 'Add_1')).toHaveText('Add'); // simple name: shows the type
+    expect(readFileSync(dragFile, 'utf8')).toContain('  add: Add;\n  Add_1;\n');
+    expect(readFileSync(dragFile, 'utf8')).toMatch(/ {2}Add_1 = \(\d+, \d+, 60, 30\)/);
+
+    await node(page, 'Add_1').click();
+    await page.getByRole('button', { name: 'Delete block', exact: true }).click();
+    await expect(node(page, 'Add_1')).toHaveCount(0);
+    expect(readFileSync(dragFile, 'utf8')).not.toContain('Add_1');
+
+    await page.keyboard.press('Control+z');
+    await expect(node(page, 'Add_1')).toBeVisible();
+  });
+
+  test('Delete removes a block with its connections, and undo brings them back', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Acc');
+    const before = readFileSync(dragFile, 'utf8');
+    await node(page, 'add').click();
+    await page.keyboard.press('Delete');
+
+    await expect(node(page, 'add')).toHaveCount(0);
+    const text = readFileSync(dragFile, 'utf8');
+    expect(text).not.toContain('add: Add;');
+    expect(text).not.toContain('add.');
+
+    await page.keyboard.press('Control+z');
+    await expect(node(page, 'add')).toBeVisible();
+    expect(readFileSync(dragFile, 'utf8')).toBe(before);
+  });
+});
+
+test('the palette lists the types a block can be added of', async ({ page }) => {
+  await goto(page, '/?file=TwoCounters.dia&type=Acc');
+  const palette = page.getByTestId('palette');
+  // The file's other types: the external function Print and the diagram type Main (not Acc itself).
+  await expect(palette.getByTestId('palette-Print')).toContainText('external');
+  await expect(palette.getByTestId('palette-Main')).toBeVisible();
+  await expect(palette.getByTestId('palette-Acc')).toHaveCount(0);
+  // The standard library is collapsed.
+  await expect(palette.getByTestId('palette-Add')).toBeHidden();
+  await palette.getByText('Standard library').click();
+  await expect(palette.getByTestId('palette-Add')).toBeVisible();
+});
+
+test('inherited blocks have no delete button', async ({ page }) => {
+  await goto(page, '/?file=PLib.dia&type=PTrack');
+  await node(page, 'P::e').click();
+  await expect(page.getByRole('button', { name: 'Delete block', exact: true })).toHaveCount(0);
+  await node(page, 'SelReal_1').click();
+  await expect(page.getByRole('button', { name: 'Delete block', exact: true })).toHaveCount(1);
 });
 
 test('inherited connections cannot be selected', async ({ page }) => {

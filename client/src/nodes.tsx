@@ -78,13 +78,46 @@ function EdgeHandles({ data, isConnectable }: { data: DiagramNode; isConnectable
   );
 }
 
-/** A block: rounded body with its ports as 6×6 squares just outside the left and right edges. */
-export function BlockNode({ data, isConnectable }: NodeProps<DiagramFlowNode>) {
+/** A × that deletes a node (with what belongs to it); see DeleteButton for connections. */
+function NodeDeleteButton({ label, className, onClick }: { label: string; className: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className={`delete-button ${className} nodrag nopan`}
+      title={`${label} (Delete)`}
+      aria-label={label}
+      // Keep React Flow from treating the press as a click on the canvas, which
+      // would clear the selection (and remove this button) before the click.
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+    >
+      ×
+    </button>
+  );
+}
+
+/**
+ * A block: rounded body with its ports as 6×6 squares just outside the left
+ * and right edges. When selected and deletable, a × below it deletes it.
+ */
+export function BlockNode({ data, isConnectable, selected }: NodeProps<DiagramFlowNode>) {
+  const editing = useEditing();
   return (
     <>
       <div className={nodeClasses('block', data)} title={`${data.id}: ${data.typeName}`}>
         <span className="node__label">{data.label}</span>
       </div>
+      {selected && editing.editable && data.deletable && (
+        <NodeDeleteButton
+          label="Delete block"
+          className="delete-button--block"
+          onClick={() => editing.deleteItems({ nodes: [data.id] })}
+        />
+      )}
       {data.inPorts.map((p) => (
         <ConnectionHandle
           key={`in:${p.name}`}
@@ -157,22 +190,11 @@ export function LiteralNode({ data, selected }: NodeProps<DiagramFlowNode>) {
       {data.label}
       <EdgeHandles data={data} isConnectable={false} />
       {selected && editing.editable && connection && (
-        <button
-          type="button"
-          className="delete-button delete-button--literal nodrag nopan"
-          title="Delete literal (Delete)"
-          aria-label="Delete literal"
-          // Keep React Flow from treating the press as a click on the canvas, which
-          // would clear the selection (and remove this button) before the click.
-          onPointerDown={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            editing.deleteConnections([connection]);
-          }}
-        >
-          ×
-        </button>
+        <NodeDeleteButton
+          label="Delete literal"
+          className="delete-button--literal"
+          onClick={() => editing.deleteItems({ edges: [connection] })}
+        />
       )}
     </div>
   );

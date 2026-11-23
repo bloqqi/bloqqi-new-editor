@@ -39,6 +39,18 @@ export interface DiagramNode {
   inConnectable: boolean;
   /** Not blocks: a new connection may start at the `out` handle. */
   outConnectable: boolean;
+  /** A block declared in this type's body, which can be deleted here. */
+  deletable: boolean;
+}
+
+/** A type a block can be added of (the palette; see DiagramBuilder.palette). */
+export interface PaletteEntry {
+  name: string;
+  /** `local`: the file's own types; `standard`: the standard library. */
+  group: 'local' | 'standard';
+  kind: 'diagramType' | 'function' | 'externalFunction' | 'stateMachine';
+  /** First line of the type's doc string, or null. */
+  doc: string | null;
 }
 
 /**
@@ -89,6 +101,7 @@ export interface DiagramMessage {
   readOnly: string | null;
   /** How the request changed the file (edits, restore), or null. */
   change: Change | null;
+  palette: PaletteEntry[];
 }
 
 /** The text of a file before and after a change. */
@@ -137,12 +150,26 @@ export interface ConnectRequest {
   target: Endpoint;
 }
 
-/** Delete connections by edge id (removes their statements); answered like a move. */
+/**
+ * Delete connections (edge ids) and blocks (node ids) in one edit; a block
+ * takes its connections and annotation entry with it. Answered like a move.
+ */
 export interface DeleteRequest {
   type: 'delete';
   file: string;
   diagramType: string;
   edges: string[];
+  nodes?: string[];
+}
+
+/** Add a block `Type_N;` of a palette type at (x, y). Answered like a move. */
+export interface AddBlockRequest {
+  type: 'addBlock';
+  file: string;
+  diagramType: string;
+  typeName: string;
+  x: number;
+  y: number;
 }
 
 /**
@@ -157,7 +184,13 @@ export interface RestoreRequest {
   expected: string;
 }
 
-export type ClientMessage = OpenRequest | MoveRequest | ConnectRequest | DeleteRequest | RestoreRequest;
+export type ClientMessage =
+  | OpenRequest
+  | MoveRequest
+  | ConnectRequest
+  | DeleteRequest
+  | AddBlockRequest
+  | RestoreRequest;
 
 export function webSocketUrl(): string {
   const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
