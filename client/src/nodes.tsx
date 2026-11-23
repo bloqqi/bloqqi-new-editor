@@ -1,4 +1,5 @@
-import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
+import { Handle, Position, useConnection, type Node, type NodeProps } from '@xyflow/react';
+import { canConnect, handleInfo } from './connections';
 import type { DiagramNode, NodeKind } from './protocol';
 
 export type DiagramFlowNode = Node<DiagramNode & Record<string, unknown>, NodeKind>;
@@ -14,45 +15,97 @@ function nodeClasses(base: string, data: DiagramNode): string {
   return classes.join(' ');
 }
 
-/** Invisible handles at the middle of the left and right edges. */
-function EdgeHandles() {
+/** The handle a connection is being dragged from, or null. */
+function useConnectingFrom(): { node: DiagramNode; handle: string | null } | null {
+  return useConnection<DiagramFlowNode, { node: DiagramNode; handle: string | null } | null>((c) =>
+    c.inProgress ? { node: c.fromNode.data, handle: c.fromHandle.id ?? null } : null,
+  );
+}
+
+/**
+ * A connection handle. It can start or end a new connection when the canvas
+ * allows editing and the handle is free; while a connection is being dragged,
+ * every handle it could end at is marked valid (green).
+ */
+function ConnectionHandle({
+  data,
+  id,
+  side,
+  canvasConnectable,
+  className,
+  style,
+  title,
+}: {
+  data: DiagramNode;
+  id: string;
+  side: 'in' | 'out';
+  canvasConnectable: boolean;
+  className: string;
+  style?: React.CSSProperties;
+  title?: string;
+}) {
+  const from = useConnectingFrom();
+  const info = handleInfo(data, id);
+  const connectable = canvasConnectable && !!info?.connectable;
+  const classes = [className];
+  if (connectable) classes.push('handle--free');
+  if (from) {
+    const self = from.node.id === data.id && from.handle === id;
+    if (self) classes.push('handle--from');
+    else if (canConnect(from, { node: data, handle: id })) classes.push('handle--valid');
+  }
+  return (
+    <Handle
+      id={id}
+      type={side === 'in' ? 'target' : 'source'}
+      position={side === 'in' ? Position.Left : Position.Right}
+      className={classes.join(' ')}
+      style={style}
+      title={title}
+      isConnectable={connectable}
+    />
+  );
+}
+
+/** Handles at the middle of the left (in) and right (out) edges, shown on hover when usable. */
+function EdgeHandles({ data, isConnectable }: { data: DiagramNode; isConnectable: boolean }) {
   return (
     <>
-      <Handle type="target" position={Position.Left} id="in" className="handle--hidden" isConnectable={false} />
-      <Handle type="source" position={Position.Right} id="out" className="handle--hidden" isConnectable={false} />
+      <ConnectionHandle data={data} id="in" side="in" canvasConnectable={isConnectable} className="node-handle node-handle--in" />
+      <ConnectionHandle data={data} id="out" side="out" canvasConnectable={isConnectable} className="node-handle node-handle--out" />
     </>
   );
 }
 
 /** A block: rounded body with its ports as 6×6 squares just outside the left and right edges. */
-export function BlockNode({ data }: NodeProps<DiagramFlowNode>) {
+export function BlockNode({ data, isConnectable }: NodeProps<DiagramFlowNode>) {
   return (
     <>
       <div className={nodeClasses('block', data)} title={`${data.id}: ${data.typeName}`}>
         <span className="node__label">{data.label}</span>
       </div>
       {data.inPorts.map((p) => (
-        <Handle
+        <ConnectionHandle
           key={`in:${p.name}`}
+          data={data}
           id={`in:${p.name}`}
-          type="target"
-          position={Position.Left}
+          side="in"
+          canvasConnectable={isConnectable}
           className="port port--in"
           style={{ top: p.y }}
           title={`${p.name}: ${p.typeName}`}
-          isConnectable={false}
         />
       ))}
       {data.outPorts.map((p) => (
-        <Handle
+        <ConnectionHandle
           key={`out:${p.name}`}
+          data={data}
           id={`out:${p.name}`}
-          type="source"
-          position={Position.Right}
+          side="out"
+          canvasConnectable={isConnectable}
           className="port port--out"
           style={{ top: p.y }}
           title={`${p.name}: ${p.typeName}`}
-          isConnectable={false}
         />
       ))}
     </>
@@ -60,43 +113,43 @@ export function BlockNode({ data }: NodeProps<DiagramFlowNode>) {
 }
 
 /** In-parameter: box with a triangle pointing right (into the diagram). */
-export function InParameterNode({ data }: NodeProps<DiagramFlowNode>) {
+export function InParameterNode({ data, isConnectable }: NodeProps<DiagramFlowNode>) {
   return (
     <div className={nodeClasses('parameter', data) + ' parameter--in'} title={`in ${data.id}: ${data.typeName}`}>
       <span className="node__label">{data.label}</span>
       <span className="parameter__marker" aria-hidden="true" />
-      <EdgeHandles />
+      <EdgeHandles data={data} isConnectable={isConnectable} />
     </div>
   );
 }
 
 /** Out-parameter: box with a bar on the left (where connections arrive). */
-export function OutParameterNode({ data }: NodeProps<DiagramFlowNode>) {
+export function OutParameterNode({ data, isConnectable }: NodeProps<DiagramFlowNode>) {
   return (
     <div className={nodeClasses('parameter', data) + ' parameter--out'} title={`out ${data.id}: ${data.typeName}`}>
       <span className="parameter__marker" aria-hidden="true" />
       <span className="node__label">{data.label}</span>
-      <EdgeHandles />
+      <EdgeHandles data={data} isConnectable={isConnectable} />
     </div>
   );
 }
 
 /** Variable: plain box labelled `kind name`. */
-export function VariableNode({ data }: NodeProps<DiagramFlowNode>) {
+export function VariableNode({ data, isConnectable }: NodeProps<DiagramFlowNode>) {
   return (
     <div className={nodeClasses('variable', data)} title={`${data.id}: ${data.typeName}`}>
       <span className="node__label">{data.label}</span>
-      <EdgeHandles />
+      <EdgeHandles data={data} isConnectable={isConnectable} />
     </div>
   );
 }
 
-/** Literal: just its text, left of the port it feeds. */
+/** Literal: just its text, left of the port it feeds. Its handle is never connectable. */
 export function LiteralNode({ data }: NodeProps<DiagramFlowNode>) {
   return (
     <div className="literal" title={`${data.label}: ${data.typeName}`}>
       {data.label}
-      <EdgeHandles />
+      <EdgeHandles data={data} isConnectable={false} />
     </div>
   );
 }

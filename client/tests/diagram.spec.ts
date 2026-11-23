@@ -14,6 +14,8 @@ const fitted = (page: Page) => expect(page.locator('.canvas[data-fitted="true"]'
 
 const node = (page: Page, id: string) => page.locator(`.react-flow__node[data-id="${id}"]`);
 const blocks = (page: Page) => page.locator('.react-flow__node-block');
+const handle = (page: Page, nodeId: string, handleId: string) =>
+  node(page, nodeId).locator(`.react-flow__handle[data-handleid="${handleId}"]`);
 const edge = (page: Page, id: string) => page.locator(`.react-flow__edge[data-id="${id}"]`);
 
 test('shows one node per block, including inherited blocks', async ({ page }) => {
@@ -243,6 +245,76 @@ test.describe.serial('moving nodes', () => {
     expect(await offset()).toBeCloseTo(offsetBefore, 0);
     expect(readFileSync(dragFile, 'utf8')).toBe(before);
   });
+
+  // Connections (still Drag.dia, so these run after the moves).
+
+  test('selecting a connection and pressing Delete removes its statement', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Acc');
+    expect(readFileSync(dragFile, 'utf8')).toContain('  connect(in, add.in1);\n');
+    await expect(page.locator('.react-flow__edge')).toHaveCount(4);
+
+    await edge(page, 'in.out->add.in:in1').click();
+    await expect(edge(page, 'in.out->add.in:in1')).toHaveClass(/selected/);
+    await page.keyboard.press('Delete');
+
+    await expect(page.locator('.react-flow__edge')).toHaveCount(3);
+    expect(readFileSync(dragFile, 'utf8')).not.toContain('connect(in, add.in1);');
+  });
+
+  test('dragging from a handle to a free port connects them', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Acc');
+    const from = handle(page, 'in', 'out');
+    const to = handle(page, 'add', 'in:in1');
+
+    // Start the drag: only the free Int input (in1) and the targets that accept
+    // an Int (out, state's in is taken) light up.
+    const a = (await node(page, 'in').boundingBox())!;
+    await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2); // hover shows the handle
+    const start = (await from.boundingBox())!;
+    await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(start.x + 40, start.y + 30, { steps: 5 });
+    await expect(to).toHaveClass(/handle--valid/);
+    await expect(handle(page, 'add', 'in:in2')).not.toHaveClass(/handle--valid/);
+    const end = (await to.boundingBox())!;
+    await page.mouse.move(end.x + end.width / 2, end.y + end.height / 2, { steps: 5 });
+    await page.mouse.up();
+
+    await expect(page.locator('.react-flow__edge')).toHaveCount(4);
+    await expect(edge(page, 'in.out->add.in:in1')).toHaveCount(1);
+    expect(readFileSync(dragFile, 'utf8')).toContain('  connect(add.out, state);\n  connect(in, add.in1);\n}');
+  });
+
+  test('a port that already has a connection cannot get another', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Acc');
+    const before = readFileSync(dragFile, 'utf8');
+    const start = (await handle(page, 'add', 'out:out').boundingBox())!;
+    const end = (await handle(page, 'add', 'in:in2').boundingBox())!;
+    await page.mouse.move(start.x + 3, start.y + 3);
+    await page.mouse.down();
+    await page.mouse.move(end.x + 3, end.y + 3, { steps: 10 });
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+    await expect(page.locator('.react-flow__edge')).toHaveCount(4);
+    expect(readFileSync(dragFile, 'utf8')).toBe(before);
+    await expect(page.getByRole('alert')).toHaveCount(0);
+  });
+
+  test('selecting a literal and pressing Delete removes its connection', async ({ page }) => {
+    await goto(page, '/?file=Drag.dia&type=Main');
+    expect(readFileSync(dragFile, 'utf8')).toContain('connect(1, acc1.in);');
+    await node(page, '#literal:acc1.in:in').click();
+    await page.keyboard.press('Delete');
+    await expect(node(page, '#literal:acc1.in:in')).toHaveCount(0);
+    expect(readFileSync(dragFile, 'utf8')).not.toContain('connect(1, acc1.in);');
+  });
+});
+
+test('inherited connections cannot be selected', async ({ page }) => {
+  await goto(page, '/?file=PLib.dia&type=PTrack');
+  const inherited = edge(page, 'P::e.out:out->P::PPart.in:in1');
+  await expect(inherited).not.toHaveClass(/selectable/);
+  await expect(edge(page, 'Track.out->SelReal_1.in:sel')).toHaveClass(/selectable/);
 });
 
 test('files with syntax errors are read-only', async ({ page }) => {

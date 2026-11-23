@@ -63,19 +63,30 @@ function toPath(points: Point[]): string {
 }
 
 /** Line style of a (half) connection, following ConnectionPart.refreshVisuals. */
-function lineClass(data: DiagramEdge, inherited: boolean): string {
+function lineClass(data: DiagramEdge, inherited: boolean, selected: boolean): string {
   const classes = ['flow'];
   if (data.error) classes.push('flow--error');
   if (inherited) classes.push('flow--inherited');
+  if (selected) classes.push('flow--selected');
   return classes.join(' ');
 }
 
-export function FlowEdge({ id, sourceX, sourceY, targetX, targetY, data, markerEnd }: EdgeProps<FlowEdgeType>) {
+export function FlowEdge({ id, sourceX, sourceY, targetX, targetY, data, markerEnd, selected }: EdgeProps<FlowEdgeType>) {
+  const isSelected = !!selected;
   if (!data) return null;
   const points = route(sourceX, sourceY, targetX, targetY);
 
+  // A selected connection gets a halo behind it (not a thicker line: arrow
+  // heads are sized in units of the line width).
+  const halo = isSelected ? <path d={toPath(points)} className="flow__halo" /> : null;
+
   if (!data.intercept || data.inherited) {
-    return <BaseEdge id={id} path={toPath(points)} markerEnd={markerEnd} className={lineClass(data, data.inherited)} />;
+    return (
+      <>
+        {halo}
+        <BaseEdge id={id} path={toPath(points)} markerEnd={markerEnd} className={lineClass(data, data.inherited, isSelected)} />
+      </>
+    );
   }
 
   // An interception half: the part that stands for the original, inherited
@@ -85,8 +96,14 @@ export function FlowEdge({ id, sourceX, sourceY, targetX, targetY, data, markerE
   const size = data.largeMarker ? 8 : 4;
   return (
     <g data-intercept={data.intercept}>
-      <BaseEdge id={`${id}:1`} path={toPath(first)} className={lineClass(data, firstInherited)} />
-      <BaseEdge id={id} path={toPath(second)} markerEnd={markerEnd} className={lineClass(data, !firstInherited)} />
+      {halo}
+      <BaseEdge id={`${id}:1`} path={toPath(first)} className={lineClass(data, firstInherited, isSelected)} />
+      <BaseEdge
+        id={id}
+        path={toPath(second)}
+        markerEnd={markerEnd}
+        className={lineClass(data, !firstInherited, isSelected)}
+      />
       <rect
         className="flow__marker"
         x={mid[0] - size / 2}

@@ -30,6 +30,15 @@
   the type, inherited nodes get `Super::name` entries in the subtype, literals
   are never stored. Only that block is spliced into the text (via AST source
   positions, `SourceText`); comments and formatting elsewhere are kept.
+- Connections (`DiagramEdits.connect` / `deleteConnections`): dragging from an
+  output handle to an input handle appends `connect(a, b);` to the type's body
+  (indented like the last statement; braces found with the scanner's tokens).
+  Invalid connections are refused, not just coloured as in the old editor:
+  wrong direction, input already driven, incompatible types, not nameable
+  (`Anchor.canAccess()`: ports inside inlined blocks), or new errors such as a
+  dataflow cycle. Deleting removes the declaring statement (the whole
+  `intercept` for an interception half) and its line. Not supported yet:
+  literals, struct-field connections (`a.status.level`), inlined-block ports.
 - Edits are checked by reparsing before anything is written; an edit that adds
   syntax errors or more semantic errors is refused. Files with syntax errors
   are not edited. Writes go through a temp file and an atomic move.
@@ -83,6 +92,12 @@ since its own `ant jar` fails on JDK 21).
 - **The editor writes the files it shows.** Never point a server (or a test
   that edits) at the compiler's `examples/`; use `workspace/`, a temp copy
   (`WebServerTest`), or `build/e2e-workspace`.
+- **AST pitfalls for text edits.** Use `getStartLine()/getStartColumn()` (and
+  `End…`), not the packed `getStart()/getEnd()`; `List.getIndexOfChild` can
+  return an index for a node that is not its child (compare `getParent()`);
+  the compiler copies statements from `wiring` declarations into the types
+  that use them, *with their original positions*, so check that a statement's
+  position lies inside the type before editing it (`DiagramBuilder.isDeclaredIn`).
 - **Broken examples:** five files in `examples/` don't load cleanly and are
   excluded from `ExamplesLoadTest`; the list and reasons are in
   `server/src/test/java/org/bloqqi/web/Examples.java`.

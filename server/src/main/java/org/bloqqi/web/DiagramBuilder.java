@@ -86,11 +86,29 @@ public final class DiagramBuilder {
 			return new Diagram(file.fileName(), null, names, List.of(), List.of(), problems,
 					DiagramEdits.readOnlyReason(file));
 		}
-		return new DiagramBuilder.Builder(dt).build(file.fileName(), names, problems, DiagramEdits.readOnlyReason(file));
+		return new Builder(dt).build(file.fileName(), names, problems, DiagramEdits.readOnlyReason(file));
 	}
 
-	private static final class Builder {
+	/**
+	 * The diagram of a top-level diagram type together with the AST elements
+	 * behind it, for diagram edits: connections by edge id, anchors by handle.
+	 *
+	 * @throws IllegalArgumentException if the type does not exist
+	 */
+	static Builder resolve(LoadedFile file, String diagramTypeName) {
+		DiagramType dt = find(file.compilationUnit(), diagramTypeName);
+		if (dt == null) {
+			throw new IllegalArgumentException("No diagram type " + diagramTypeName + " in " + file.fileName());
+		}
+		Builder b = new Builder(dt);
+		b.build(file.fileName(), List.of(), List.of(), null);
+		return b;
+	}
+
+	static final class Builder {
 		private final DiagramType dt;
+		/** Filled by {@link #build}: the connection behind each edge. */
+		private final Map<String, InheritedConnection> connectionsById = new LinkedHashMap<>();
 		/** Parameters, blocks and variables, in the old editor's order. */
 		private final List<Node> nodes = new ArrayList<>();
 		private final Map<String, String> labels = new HashMap<>();
@@ -172,9 +190,11 @@ public final class DiagramBuilder {
 					// ConnectionPart.refreshVisuals
 					largeMarker = first ? !connectionInterception : connectionInterception;
 				}
+				connectionsById.put(id, c);
 				edges.add(new DiagramEdge(
 						id, s.node(), s.handle(), t.node(), t.handle(),
 						!c.canDelete(),
+						isDeletable(c, dt),
 						c.hasErrors() || c.isOnDataflowCycle(),
 						fromLiteral,
 						c.isIntercept() ? intercept : null,
@@ -182,6 +202,41 @@ public final class DiagramBuilder {
 			}
 			result.addAll(literals.values());
 			return new Diagram(fileName, dt.name(), names, result, edges, problems, readOnly);
+		}
+
+		DiagramType diagramType() {
+			return dt;
+		}
+
+		/** The connection behind an edge id, or null. */
+		InheritedConnection connection(String edgeId) {
+			return connectionsById.get(edgeId);
+		}
+
+		/**
+		 * The anchor behind a handle: a port for {@code in:<port>}/{@code out:<port>}
+		 * on a block, the parameter or variable itself for {@code in}/{@code out}.
+		 * Null if there is no such handle.
+		 */
+		Anchor anchor(Endpoint e) {
+			Node n = nodesById.get(e.node());
+			if (n instanceof Block b) {
+				for (Port p : b.getInPorts()) {
+					if (Diagram.inPortHandle(p.name()).equals(e.handle())) {
+						return p;
+					}
+				}
+				for (Port p : b.getOutPorts()) {
+					if (Diagram.outPortHandle(p.name()).equals(e.handle())) {
+						return p;
+					}
+				}
+				return null;
+			}
+			if (n instanceof Anchor a && (Diagram.IN.equals(e.handle()) || Diagram.OUT.equals(e.handle()))) {
+				return a;
+			}
+			return null;
 		}
 
 		/** The handle a connection attaches to, or null if it is not on a shown node. */
@@ -210,6 +265,8 @@ public final class DiagramBuilder {
 			String kind;
 			String typeName;
 			boolean error = false;
+			boolean inConnectable = false;
+			boolean outConnectable = false;
 			List<DiagramPort> in = List.of();
 			List<DiagramPort> out = List.of();
 			if (n instanceof Block b) {
@@ -221,13 +278,18 @@ public final class DiagramBuilder {
 			} else if (n instanceof Parameter p) {
 				kind = p.isInParameter() ? Diagram.IN_PARAMETER : Diagram.OUT_PARAMETER;
 				typeName = p.type().name();
+				outConnectable = canBeSource(p);
+				inConnectable = canBeTarget(p);
 			} else {
+				Variable v = (Variable) n;
 				kind = Diagram.VARIABLE;
-				typeName = ((Variable) n).type().name();
+				typeName = v.type().name();
+				outConnectable = canBeSource(v);
+				inConnectable = canBeTarget(v);
 			}
 			return new DiagramNode(id, kind, labels.get(id), typeName,
 					n.isInherited(), n.isInlined(), error,
-					r.x(), r.y(), r.width(), r.height(), in, out);
+					r.x(), r.y(), r.width(), r.height(), in, out, inConnectable, outConnectable);
 		}
 
 		/** A literal is drawn left of its target, level with the target port (LiteralPart). */
@@ -248,16 +310,76 @@ public final class DiagramBuilder {
 			}
 			int x = r.x() - width - LITERAL_GAP;
 			return new DiagramNode("#literal:" + target, Diagram.LITERAL, text, lit.type().name(),
-					false, false, false, x, y, width, LITERAL_HEIGHT, List.of(), List.of());
+					false, false, false, x, y, width, LITERAL_HEIGHT, List.of(), List.of(), false, false);
 		}
 
 		private static List<DiagramPort> ports(Iterable<Port> ports) {
 			List<DiagramPort> result = new ArrayList<>();
 			for (Port p : ports) {
-				result.add(new DiagramPort(p.name(), p.type().name(), Layout.portY(p.index())));
+				boolean connectable = p.isInParameter() ? canBeTarget(p) : canBeSource(p);
+				result.add(new DiagramPort(p.name(), p.type().name(), Layout.portY(p.index()), connectable));
 			}
 			return result;
 		}
+	}
+
+	/**
+	 * Whether the connection can be deleted here: {@code Connection.canDelete()}
+	 * (not inherited, not inside an inlined block), and the statement declaring
+	 * it is written in this type's body. The second part matters for wired
+	 * blocks: the compiler copies a {@code wiring} declaration's statements into
+	 * the type, with their original source positions, which are outside the body.
+	 */
+	static boolean isDeletable(InheritedConnection c, DiagramType dt) {
+		org.bloqqi.compiler.ast.FlowDecl declared = c.getDeclaredFlowDecl();
+		return c.canDelete() && declared != null && isDeclaredIn(declared, dt);
+	}
+
+	/** Whether the statement is one of those written in the body of the type. */
+	static boolean isDeclaredIn(org.bloqqi.compiler.ast.FlowDecl d, DiagramType dt) {
+		// (Not getIndexOfChild: it can report an index for a node of another list.)
+		var list = dt.getFlowDeclList();
+		return d.getParent() == list && SourceText.hasPosition(list) && SourceText.hasPosition(d)
+				&& SourceText.compare(d.getStartLine(), d.getStartColumn(), list.getStartLine(), list.getStartColumn()) >= 0
+				&& SourceText.compare(d.getEndLine(), d.getEndColumn(), list.getEndLine(), list.getEndColumn()) <= 0;
+	}
+
+	/**
+	 * Whether a new connection may start at the anchor: an out-port, an
+	 * in-parameter or a variable that can be named here ({@code canAccess()};
+	 * not, e.g., ports inside inlined blocks).
+	 */
+	static boolean canBeSource(Anchor a) {
+		boolean kind = a instanceof Port p ? !p.isInParameter()
+				: a instanceof Parameter p ? p.isInParameter()
+				: a instanceof Variable;
+		return kind && a.canAccess();
+	}
+
+	/**
+	 * Whether a new connection may end at the anchor: an in-port, an
+	 * out-parameter or a variable that can be named here and has no incoming
+	 * connection yet.
+	 */
+	static boolean canBeTarget(Anchor a) {
+		boolean kind = a instanceof Port p ? p.isInParameter()
+				: a instanceof Parameter p ? !p.isInParameter()
+				: a instanceof Variable;
+		return kind && a.canAccess() && ingoing(a).isEmpty();
+	}
+
+	/** {@code ingoingConnections()} is generated on the concrete anchor classes only. */
+	static java.util.Set<org.bloqqi.compiler.ast.Connection> ingoing(Anchor a) {
+		if (a instanceof Port p) {
+			return p.ingoingConnections();
+		}
+		if (a instanceof Parameter p) {
+			return p.ingoingConnections();
+		}
+		if (a instanceof Variable v) {
+			return v.ingoingConnections();
+		}
+		return java.util.Set.of();
 	}
 
 	/** Block label, following the old editor (BlockPart.refreshVisuals). */

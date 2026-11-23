@@ -8,6 +8,8 @@ export interface DiagramPort {
   name: string;
   typeName: string;
   y: number;
+  /** A new connection may end at this in-port (free, nameable) or start at this out-port. */
+  connectable: boolean;
 }
 
 /**
@@ -33,6 +35,10 @@ export interface DiagramNode {
   height: number;
   inPorts: DiagramPort[];
   outPorts: DiagramPort[];
+  /** Not blocks: a new connection may end at the `in` handle. */
+  inConnectable: boolean;
+  /** Not blocks: a new connection may start at the `out` handle. */
+  outConnectable: boolean;
 }
 
 /**
@@ -45,8 +51,10 @@ export interface DiagramEdge {
   sourceHandle: string;
   target: string;
   targetHandle: string;
-  /** Not deletable here (inherited, or inside an inlined block): dashed black. */
+  /** Inherited, or inside an inlined block: dashed black. */
   inherited: boolean;
+  /** Can be deleted here (declared by a statement in this type's body). */
+  deletable: boolean;
   /** Connection error or dataflow cycle: red. */
   error: boolean;
   /** Source is a literal: no arrow head. */
@@ -106,7 +114,30 @@ export interface MoveRequest {
   nodes: { id: string; x: number; y: number }[];
 }
 
-export type ClientMessage = OpenRequest | MoveRequest;
+/** One end of a connection: a node and one of its handles. */
+export interface Endpoint {
+  node: string;
+  handle: string;
+}
+
+/** Connect two handles (appends `connect(...)` to the type); answered like a move. */
+export interface ConnectRequest {
+  type: 'connect';
+  file: string;
+  diagramType: string;
+  source: Endpoint;
+  target: Endpoint;
+}
+
+/** Delete connections by edge id (removes their statements); answered like a move. */
+export interface DeleteRequest {
+  type: 'delete';
+  file: string;
+  diagramType: string;
+  edges: string[];
+}
+
+export type ClientMessage = OpenRequest | MoveRequest | ConnectRequest | DeleteRequest;
 
 export function webSocketUrl(): string {
   const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';

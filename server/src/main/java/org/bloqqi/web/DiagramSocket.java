@@ -72,12 +72,19 @@ public final class DiagramSocket implements Session.Listener.AutoDemanding {
 		LoadedFile file = workspace.load(request.file());
 		return switch (request) {
 			case Protocol.OpenRequest open -> DiagramBuilder.build(file, open.diagramType());
-			case Protocol.MoveRequest move -> {
-				String text = DiagramEdits.moveNodes(file, move.diagramType(), move.moves());
-				workspace.write(file.fileName(), text);
-				yield DiagramBuilder.build(BloqqiLoader.load(file.fileName(), text), move.diagramType());
-			}
+			case Protocol.MoveRequest move ->
+				save(file, move.diagramType(), DiagramEdits.moveNodes(file, move.diagramType(), move.moves()));
+			case Protocol.ConnectRequest connect -> save(file, connect.diagramType(),
+					DiagramEdits.connect(file, connect.diagramType(), connect.source(), connect.target()));
+			case Protocol.DeleteRequest delete -> save(file, delete.diagramType(),
+					DiagramEdits.deleteConnections(file, delete.diagramType(), delete.edges()));
 		};
+	}
+
+	/** Writes an edit's new text and answers with the diagram built from it. */
+	private Diagram save(LoadedFile file, String diagramType, String text) throws IOException {
+		workspace.write(file.fileName(), text);
+		return DiagramBuilder.build(BloqqiLoader.load(file.fileName(), text), diagramType);
 	}
 
 	@Override

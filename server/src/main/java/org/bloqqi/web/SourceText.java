@@ -55,6 +55,11 @@ final class SourceText {
 		return node.getStartLine() > 0 && node.getEndLine() > 0;
 	}
 
+	/** Orders two (line, column) positions. */
+	static int compare(int line1, int column1, int line2, int column2) {
+		return line1 != line2 ? Integer.compare(line1, line2) : Integer.compare(column1, column2);
+	}
+
 	/** Offset of the node's first character. */
 	int start(ASTNode<?> node) {
 		return offset(node.getStartLine(), node.getStartColumn());

@@ -63,6 +63,9 @@ public record Diagram(
 	 *                  {@link Layout#PORT_SIZE} pixels on either side
 	 * @param inPorts   input ports of a block (empty for other kinds)
 	 * @param outPorts  output ports of a block (empty for other kinds)
+	 * @param inConnectable  a new connection may end at the {@code in} handle (not for blocks;
+	 *                       see {@link DiagramPort#connectable})
+	 * @param outConnectable a new connection may start at the {@code out} handle
 	 */
 	public record DiagramNode(
 			String id,
@@ -77,7 +80,9 @@ public record Diagram(
 			int width,
 			int height,
 			List<DiagramPort> inPorts,
-			List<DiagramPort> outPorts) {
+			List<DiagramPort> outPorts,
+			boolean inConnectable,
+			boolean outConnectable) {
 	}
 
 	/**
@@ -86,8 +91,10 @@ public record Diagram(
 	 * @param name     parameter name of the block's type
 	 * @param typeName type of the port
 	 * @param y        top of the 6×6 port square, relative to the block's top
+	 * @param connectable a new connection may end at this in-port (it can be named
+	 *                 here and has no incoming connection) or start at this out-port
 	 */
-	public record DiagramPort(String name, String typeName, int y) {
+	public record DiagramPort(String name, String typeName, int y, boolean connectable) {
 	}
 
 	/**
@@ -95,8 +102,10 @@ public record Diagram(
 	 *
 	 * @param id           {@code <source>.<sourceHandle>-><target>.<targetHandle>}, suffixed
 	 *                     with {@code #n} if the same endpoints are connected more than once
-	 * @param inherited    not deletable here: inherited, or inside an inlined block
+	 * @param inherited    inherited, or inside an inlined block
 	 *                     ({@code !Connection.canDelete()}); drawn dashed black
+	 * @param deletable    can be deleted here: not inherited, and declared by a
+	 *                     statement in this type's body (not, e.g., by a wiring)
 	 * @param error        {@code hasErrors() || isOnDataflowCycle()}; drawn red
 	 * @param fromLiteral  the source is a literal (no arrow head)
 	 * @param intercept    null, or {@code "first"}/{@code "second"} for the two halves of an
@@ -111,6 +120,7 @@ public record Diagram(
 			String target,
 			String targetHandle,
 			boolean inherited,
+			boolean deletable,
 			boolean error,
 			boolean fromLiteral,
 			String intercept,

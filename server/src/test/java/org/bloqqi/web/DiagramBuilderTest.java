@@ -120,8 +120,8 @@ public class DiagramBuilderTest {
 		DiagramNode add = nodes.get("add");
 		assertEquals(Diagram.BLOCK, add.kind());
 		// Ports at y = 5 + 14 * index, as in the old editor.
-		assertEquals(List.of(new DiagramPort("in1", "Int", 5), new DiagramPort("in2", "Int", 19)), add.inPorts());
-		assertEquals(List.of(new DiagramPort("out", "Int", 5)), add.outPorts());
+		assertEquals(List.of(new DiagramPort("in1", "Int", 5, false), new DiagramPort("in2", "Int", 19, false)), add.inPorts());
+		assertEquals(List.of(new DiagramPort("out", "Int", 5, true)), add.outPorts());
 		assertTrue(nodes.get("state").inPorts().isEmpty());
 	}
 

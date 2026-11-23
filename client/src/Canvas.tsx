@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   Background,
+  ConnectionLineType,
   ControlButton,
   Controls,
   ReactFlow,
@@ -9,7 +10,11 @@ import {
   useReactFlow,
   useStore,
   ViewportPortal,
+  type EdgeChange,
+  type IsValidConnection,
   type NodeChange,
+  type OnBeforeDelete,
+  type OnConnect,
   type OnNodeDrag,
 } from '@xyflow/react';
 import { edgeTypes, type FlowEdgeType } from './FlowEdge';
@@ -57,9 +62,15 @@ export interface CanvasProps {
   diagram: DiagramMessage | null;
   nodes: DiagramFlowNode[];
   edges: FlowEdgeType[];
-  draggable: boolean;
+  /** Nodes can be moved and connected (connected, editable diagram). */
+  editable: boolean;
   onNodesChange: (changes: NodeChange<DiagramFlowNode>[]) => void;
+  onEdgesChange: (changes: EdgeChange<FlowEdgeType>[]) => void;
   onNodeDragStop: OnNodeDrag<DiagramFlowNode>;
+  onConnect: OnConnect;
+  isValidConnection: IsValidConnection<FlowEdgeType>;
+  /** Called with the selection when Delete/Backspace is pressed; React Flow itself deletes nothing. */
+  onDelete: (selection: { nodes: DiagramFlowNode[]; edges: FlowEdgeType[] }) => void;
   /** Called once the initial view of the diagram has been fitted. */
   onFitted: () => void;
 }
@@ -73,7 +84,32 @@ export function Canvas(props: CanvasProps) {
   );
 }
 
-function Flow({ diagram, nodes, edges, draggable, onNodesChange, onNodeDragStop, onFitted }: CanvasProps) {
+/** Keys that delete the selection (Backspace for Mac keyboards). */
+const DELETE_KEYS = ['Delete', 'Backspace'];
+
+function Flow({
+  diagram,
+  nodes,
+  edges,
+  editable,
+  onNodesChange,
+  onEdgesChange,
+  onNodeDragStop,
+  onConnect,
+  isValidConnection,
+  onDelete,
+  onFitted,
+}: CanvasProps) {
+  // Deleting is an edit of the file: hand the selection to the app and let
+  // React Flow delete nothing; the server's answer replaces the diagram.
+  const onBeforeDelete = useCallback<OnBeforeDelete<DiagramFlowNode, FlowEdgeType>>(
+    async (selection) => {
+      onDelete(selection);
+      return false;
+    },
+    [onDelete],
+  );
+
   const origin = useMemo(() => contentOrigin(diagram), [diagram]);
   // Panning stops OUTSIDE_PX screen pixels beyond the origin; in flow units
   // that depends on the zoom.
@@ -90,14 +126,20 @@ function Flow({ diagram, nodes, edges, draggable, onNodesChange, onNodeDragStop,
     <ReactFlow
       nodes={nodes}
       onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
       onNodeDragStop={onNodeDragStop}
       edges={edges}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
-      nodesDraggable={draggable}
+      nodesDraggable={editable}
       nodeExtent={NODE_EXTENT}
       translateExtent={translateExtent}
-      nodesConnectable={false}
+      nodesConnectable={editable}
+      onConnect={onConnect}
+      isValidConnection={isValidConnection}
+      connectionLineType={ConnectionLineType.Step}
+      onBeforeDelete={onBeforeDelete}
+      deleteKeyCode={editable ? DELETE_KEYS : null}
       edgesFocusable={false}
       proOptions={{ hideAttribution: true }}
     >

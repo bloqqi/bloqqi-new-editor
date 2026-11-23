@@ -744,6 +744,9 @@ file.
 6. **Permissive or strict connection creation.** The old editor lets users
    create type-incompatible or double-driven connections; feedback is only
    colour. Should the new editor refuse them?
+   *Answered:* refuse them. Invalid targets are not offered while dragging
+   (valid ones are highlighted), and the server refuses wrong direction,
+   driven inputs, incompatible types, and edits that add errors (e.g. cycles).
 7. **Live errors.** Today the marker list refreshes only on open and save, and
    the canvas shows only cycle and connection errors. Should every
    `errors()` entry be shown live and attached to its element?

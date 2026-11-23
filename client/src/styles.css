@@ -10,6 +10,7 @@
   --error: #b42318;
   --flow-error: #d92d20;
   --outside: rgba(60, 60, 70, 0.1);
+  --valid: #16a34a;
   --boundary: #9a9aa3;
   --port-local: #0b2a7a;
   --port-inherited: #000000;
@@ -257,14 +258,61 @@ body,
   background: var(--port-inherited);
 }
 
-.react-flow__handle.handle--hidden {
-  width: 1px;
-  height: 1px;
+/*
+ * Connecting. Ports are handles: free ones show a crosshair, and a larger
+ * invisible hit area makes the 6×6 squares easier to grab. Parameters and
+ * variables have a round handle at the middle of their left (in) and right
+ * (out) edge, shown on hover when free. While a connection is dragged, the
+ * handles it can end at are green.
+ */
+.react-flow__handle.port.handle--free {
+  cursor: crosshair;
+}
+
+.react-flow__handle.port.handle--free::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+}
+
+.react-flow__handle.node-handle {
+  width: 8px;
+  height: 8px;
   min-width: 0;
   min-height: 0;
-  border: none;
-  background: transparent;
+  border: 1px solid var(--port-local);
+  border-radius: 50%;
+  background: #ffffff;
+  opacity: 0;
   pointer-events: none;
+}
+
+.react-flow__handle.node-handle.handle--free {
+  pointer-events: all;
+  cursor: crosshair;
+}
+
+.react-flow__node:hover .react-flow__handle.node-handle.handle--free,
+.react-flow__handle.node-handle.handle--from {
+  opacity: 1;
+}
+
+.react-flow__handle.handle--valid {
+  opacity: 1;
+  background: var(--valid);
+  border-color: var(--valid);
+  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.35);
+}
+
+.react-flow__handle.handle--from {
+  box-shadow: 0 0 0 3px rgba(31, 79, 209, 0.35);
+}
+
+/* The line drawn while connecting. */
+.react-flow__connection-path {
+  stroke: var(--local);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 3;
 }
 
 /* Connections (ConnectionPart): local blue, inherited dashed black, errors red and thicker. */
@@ -281,6 +329,24 @@ body,
 .react-flow__edge-path.flow--inherited {
   stroke: var(--inherited-border);
   stroke-dasharray: 4 2;
+}
+
+/* Selected (deletable) connections and literals; Delete removes them. */
+.react-flow__edge.selectable {
+  cursor: pointer;
+}
+
+.flow__halo {
+  fill: none;
+  stroke: rgba(31, 79, 209, 0.3);
+  stroke-width: 7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.react-flow__node-literal.selected .literal {
+  border-radius: 2px;
+  box-shadow: 0 0 0 2px rgba(31, 79, 209, 0.35);
 }
 
 .flow__marker {

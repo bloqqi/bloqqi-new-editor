@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { applyNodeChanges, MarkerType, type NodeChange, type OnNodeDrag } from '@xyflow/react';
+import {
+  applyEdgeChanges,
+  applyNodeChanges,
+  MarkerType,
+  type Connection,
+  type EdgeChange,
+  type NodeChange,
+  type OnConnect,
+  type OnNodeDrag,
+} from '@xyflow/react';
 import { Canvas, type Extent } from './Canvas';
+import { canConnect } from './connections';
 import { type FlowEdgeType } from './FlowEdge';
 import { type DiagramFlowNode } from './nodes';
 import {
@@ -80,8 +90,8 @@ function toFlowNodes(diagram: DiagramMessage | null): DiagramFlowNode[] {
       position: { x: n.x, y: n.y },
       width: n.width,
       height: n.height,
+      // Literals are selectable so that Delete removes their connection.
       draggable: literal || diagram?.readOnly ? false : undefined,
-      selectable: !literal,
       ...(literal ? { extent: UNBOUNDED } : {}),
       data: { ...n },
     };
@@ -102,6 +112,23 @@ function moveLiterals(nodes: DiagramFlowNode[], literalTargets: Map<string, stri
     const y = target.position.y + (n.data.y - target.data.y);
     return x === n.position.x && y === n.position.y ? n : { ...n, position: { x, y } };
   });
+}
+
+/** React Flow edges for a diagram; only connections that can be deleted here are selectable. */
+function toFlowEdges(diagram: DiagramMessage | null): FlowEdgeType[] {
+  return (diagram?.edges ?? []).map((e) => ({
+    id: e.id,
+    type: 'flow',
+    selectable: e.deletable && !diagram?.readOnly,
+    source: e.source,
+    sourceHandle: e.sourceHandle,
+    target: e.target,
+    targetHandle: e.targetHandle,
+    markerEnd: e.fromLiteral
+      ? undefined
+      : { type: MarkerType.Arrow, color: arrowColor(e), width: 14, height: 14, strokeWidth: 1.5 },
+    data: { ...e },
+  }));
 }
 
 /** Keeps ?file=…&type=… in the address bar so a view can be reloaded or linked. */
@@ -252,22 +279,59 @@ export function App() {
     [diagram, send, clearance],
   );
 
-  const edges = useMemo<FlowEdgeType[]>(
-    () =>
-      (diagram?.edges ?? []).map((e) => ({
-        id: e.id,
-        type: 'flow',
-        selectable: false,
-        source: e.source,
-        sourceHandle: e.sourceHandle,
-        target: e.target,
-        targetHandle: e.targetHandle,
-        markerEnd: e.fromLiteral
-          ? undefined
-          : { type: MarkerType.Arrow, color: arrowColor(e), width: 14, height: 14, strokeWidth: 1.5 },
-        data: { ...e },
-      })),
-    [diagram],
+  const nodeData = useMemo(() => new Map((diagram?.nodes ?? []).map((n) => [n.id, n])), [diagram]);
+
+  /** Offer only connections the server would accept (see connections.ts). */
+  const isValidConnection = useCallback(
+    (c: Connection | FlowEdgeType) => {
+      const source = nodeData.get(c.source);
+      const target = nodeData.get(c.target);
+      return (
+        !!source &&
+        !!target &&
+        canConnect({ node: source, handle: c.sourceHandle }, { node: target, handle: c.targetHandle })
+      );
+    },
+    [nodeData],
+  );
+
+  const onConnect = useCallback<OnConnect>(
+    (c) => {
+      if (!diagram?.diagramType || !c.sourceHandle || !c.targetHandle) return;
+      send({
+        type: 'connect',
+        file: diagram.file,
+        diagramType: diagram.diagramType,
+        source: { node: c.source, handle: c.sourceHandle },
+        target: { node: c.target, handle: c.targetHandle },
+      });
+    },
+    [diagram, send],
+  );
+
+  /** Delete the selected connections; a selected literal stands for the connection it feeds. */
+  const onDelete = useCallback(
+    ({ nodes: selectedNodes, edges: selectedEdges }: { nodes: DiagramFlowNode[]; edges: FlowEdgeType[] }) => {
+      if (!diagram?.diagramType) return;
+      const literals = new Set(selectedNodes.filter((n) => n.type === 'literal').map((n) => n.id));
+      const ids = new Set(selectedEdges.filter((e) => e.data?.deletable).map((e) => e.id));
+      for (const e of diagram.edges) {
+        if (e.deletable && literals.has(e.source)) ids.add(e.id);
+      }
+      if (ids.size > 0) {
+        send({ type: 'delete', file: diagram.file, diagramType: diagram.diagramType, edges: [...ids] });
+      }
+    },
+    [diagram, send],
+  );
+
+  // Edges are controlled too, so that they can be selected (for Delete); every
+  // diagram from the server replaces them, which clears the selection.
+  const [edges, setEdges] = useState<FlowEdgeType[]>([]);
+  useEffect(() => setEdges(toFlowEdges(diagram)), [diagram]);
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange<FlowEdgeType>[]) => setEdges((current) => applyEdgeChanges(changes, current)),
+    [],
   );
 
   return (
@@ -335,9 +399,13 @@ export function App() {
           diagram={diagram}
           nodes={nodes}
           edges={edges}
-          draggable={status === 'open' && !!diagram?.diagramType && !diagram.readOnly}
+          editable={status === 'open' && !!diagram?.diagramType && !diagram.readOnly}
           onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
           onNodeDragStop={onNodeDragStop}
+          onConnect={onConnect}
+          isValidConnection={isValidConnection}
+          onDelete={onDelete}
           onFitted={onFitted}
         />
       </main>
