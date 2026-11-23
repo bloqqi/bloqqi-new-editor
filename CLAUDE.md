@@ -7,7 +7,7 @@
   a reparse. No separate diagram model is stored.
 - `/workspace/editor` is its own git repository (branch `main`). The compiler
   is the git submodule `bloqqi-compiler/` (github.com/bloqqi/bloqqi-compiler,
-  pinned at `408e388`, the version the old editor used), used as a library;
+  pinned at `5ed56ff`, its latest commit as of 2026-11-23), used as a library;
   test files come from its `examples/`. Changing the compiler version is a
   deliberate commit of the submodule pointer.
 - The old Eclipse editor is a separate, git-ignored clone in `bloqqi-editor/`
@@ -81,11 +81,12 @@
   check that the new text reparses and the AST is as expected.
 
 ## Commands
-All commands run from `/workspace/editor`. Requires JDK 21, Ant, Node 20+.
+All commands run from `/workspace/editor`. Requires JDK 21 or later, Ant, Node 20+.
 After cloning: `git submodule update --init` (or clone with `--recursive`).
 The compiler is the submodule `bloqqi-compiler`; the build runs
-only its `gen` target and compiles it into `build/compiler` (with `release=8`,
-since its own `ant jar` fails on JDK 21).
+only its `gen` target and compiles it, like the server, with `release=21` into
+`build/compiler`. To update the compiler: `git -C bloqqi-compiler checkout <commit>`,
+run `ant test e2e`, then commit the submodule pointer.
 - Build: `ant build` (downloads pinned jars into `lib/`, builds compiler, server
   and client; `npm ci` runs only if `client/node_modules` is missing)
 - Test (server, JUnit): `ant test`
@@ -107,10 +108,11 @@ since its own `ant jar` fails on JDK 21).
   `ASTNode` keeps attribute-evaluation state in a static field (`ASTNode.state`).
   Hold `BloqqiLoader.COMPILER_LOCK` around all parsing and attribute evaluation;
   `WebServerTest.concurrentClientsAreServed` catches regressions.
-- **Don't run the compiler's own `ant build`/`ant jar`.** They fail on JDK 21
-  (`java.lang.Compiler` was removed). Our `build.xml` runs only its `gen` target
-  and compiles with `release=8`. Never edit files under the compiler checkout;
-  `gen` writes only to its git-ignored `src/generated/`.
+- **Build the compiler only through our `build.xml`**, which runs just its
+  `gen` target (and deletes the old `src/generated/` first) and compiles the
+  sources itself; its own `build`/`jar` targets are not needed (before
+  `5c8e055` they failed on JDK 21). Never edit files under the compiler
+  checkout; `gen` writes only to its git-ignored `src/generated/`.
 - **Parse through `BloqqiLoader`, not `BloqqiParser` directly.** Beaver recovers
   from syntax errors and only prints them to stderr; a "successful" parse can
   silently drop code (`SimpleAddDiagram.dia` parses as empty). `BloqqiLoader`

@@ -2,13 +2,17 @@
 <!--
   Build for the Bloqqi web editor: Java server (server/) + browser client (client/).
 
-  The Bloqqi compiler is used as a library from the editor's compiler checkout.
+  The Bloqqi compiler is used as a library from the submodule bloqqi-compiler/.
   We run only its "gen" target (JastAdd/JFlex/Beaver code generation, output in
   its git-ignored src/generated/) and compile the sources ourselves into build/,
-  with release=8: the compiler uses java.lang.Compiler, which no longer exists
-  in the JDK 21 class library, so its own "build"/"jar" targets fail on JDK 21.
+  together with the server, for Java 21 (release=21). Any JDK from 21 up can
+  build and run the editor.
 -->
 <project name="bloqqi-web-editor" default="build" basedir=".">
+
+	<fail message="The Bloqqi web editor needs JDK 21 or later (this is Java ${java.version}).">
+		<condition><not><javaversion atleast="21"/></not></condition>
+	</fail>
 
 	<property name="compiler.dir" location="bloqqi-compiler"/>
 	<property name="compiler.tools" location="${compiler.dir}/tools"/>
@@ -102,10 +106,13 @@
 
 	<target name="compiler" depends="compiler-check" unless="compiler.uptodate"
 			description="Generate and compile the Bloqqi compiler into build/compiler">
+		<!-- Regenerate from scratch: stale generated files (e.g. of AST classes a
+		     newer compiler no longer has) would otherwise be compiled too. -->
+		<delete dir="${compiler.dir}/src/generated"/>
 		<ant dir="${compiler.dir}" antfile="build.xml" target="gen" inheritAll="false"/>
 		<delete dir="${compiler.classes}"/>
 		<mkdir dir="${compiler.classes}"/>
-		<javac destdir="${compiler.classes}" release="8" debug="true" nowarn="true"
+		<javac destdir="${compiler.classes}" release="21" debug="true" nowarn="true"
 				includeAntRuntime="false" fork="true" encoding="UTF-8">
 			<src path="${compiler.dir}/src/generated"/>
 			<src path="${compiler.dir}/src/java"/>
@@ -114,7 +121,6 @@
 				<pathelement location="${compiler.tools}/beaver-rt.jar"/>
 				<pathelement location="${compiler.tools}/gson-2.6.2.jar"/>
 			</classpath>
-			<compilerarg value="-Xlint:-options"/>
 		</javac>
 		<copy todir="${compiler.classes}">
 			<fileset dir="${compiler.dir}/src/resource"/>

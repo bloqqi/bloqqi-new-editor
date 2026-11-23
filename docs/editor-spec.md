@@ -14,7 +14,7 @@ buggy, the text says so. Decisions are collected in
 | Old editor (Eclipse plug-in `org.bloqqi.editor`) | `editor/bloqqi-editor/org.bloqqi.editor/` (~10 kLOC, 143 Java files) | 0.2.7 (2020-09-30) |
 | Compiler jar the editor actually runs | `editor/bloqqi-editor/org.bloqqi.editor/lib/bloqqi-compiler.jar` (self-contained, includes beaver runtime and `StandardFunctions.dia`) | built 2020-09-30 |
 | Compiler submodule inside the editor | `editor/bloqqi-editor/org.bloqqi.editor/bloqqi-compiler/` | `408e388` |
-| Compiler used by the new editor | `editor/bloqqi-compiler/` (submodule of the new editor's repository, same commit) | `408e388` |
+| Compiler used by the new editor | `editor/bloqqi-compiler/` (submodule of the new editor's repository) | `408e388` at first, `5ed56ff` since 2026-11-23 |
 | Current compiler | `bloqqi-compiler/` | `5ed56ff` |
 | Example programs | `bloqqi-compiler/examples/*.dia` | |
 
@@ -33,6 +33,11 @@ submodule `editor/bloqqi-compiler/`; the old editor's clone is kept, git-ignored
 in `editor/bloqqi-editor/` for reference. That compiler's own `ant jar` fails on JDK 21
 (`TimeMeasure.java` uses `java.lang.Compiler`, which JDK 21 removed), so the new
 build runs only its `gen` target and compiles the sources with `release=8`.
+*Update 2026-11-23:* the submodule now points at the compiler's latest commit,
+`5ed56ff` (18 commits later: mostly C code generation fixes, a scanner fix for
+`//` comments containing `|`, and positions for more AST nodes). It no longer
+uses `java.lang.Compiler`, so it is compiled with `release=21` like the
+server, and any JDK from 21 up works.
 Also note: the generated AST keeps attribute-evaluation state in a **static**
 field (`ASTNode.state`), so compiler use must be serialised across threads,
 even for unrelated ASTs.
@@ -720,7 +725,7 @@ file.
    repository also shows the editor's tracked files as deleted, because they
    now live under `editor/bloqqi-editor/` with their own `.git`.
    *Answered:* the new editor is its own repository in `/workspace/editor`,
-   with the compiler (`408e388`) as the submodule `bloqqi-compiler/`; the old
+   with the compiler (now `5ed56ff`) as the submodule `bloqqi-compiler/`; the old
    editor's clone stays in `bloqqi-editor/` as a git-ignored reference (see §0).
 2. **Persistence strategy.** Keep "regenerate with `prettyPrint()`"? It loses
    comments and `import`/`package`, normalises formatting, and writes back
