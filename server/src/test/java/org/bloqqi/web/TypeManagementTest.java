@@ -157,6 +157,24 @@ public class TypeManagementTest {
 	}
 
 	@Test
+	public void theOrderOfSuperTypesMatters() {
+		String text = "diagramtype A(x: Int) {\n}\ndiagramtype B(y: Int) {\n}\ndiagramtype C {\n}\n";
+		String ab = DiagramEdits.setSuperTypes(load("x.dia", text), "C", List.of("A", "B"));
+		assertTrue(ab.contains("diagramtype C extends A, B {"));
+		String ba = DiagramEdits.setSuperTypes(load("x.dia", ab), "C", List.of("B", "A"));
+		assertTrue(ba.contains("diagramtype C extends B, A {"));
+		// Inherited in that order: e.g. C's parameters (its ports as a block).
+		assertEquals(List.of("A::x", "B::y"), inParameters(load("x.dia", ab), "C"));
+		assertEquals(List.of("B::y", "A::x"), inParameters(load("x.dia", ba), "C"));
+		assertEquals(List.of("A", "B"), DiagramBuilder.build(load("x.dia", ab), "C").superTypes());
+	}
+
+	private static List<String> inParameters(LoadedFile file, String type) {
+		return DiagramBuilder.build(file, type).nodes().stream()
+				.filter(n -> n.kind().equals(Diagram.IN_PARAMETER)).map(Diagram.DiagramNode::id).toList();
+	}
+
+	@Test
 	public void superTypeChangesThatBreakThingsAreRefused() throws Exception {
 		LoadedFile file = load("PLib.dia", source("PLib.dia"));
 		// PTrack intercepts P's out-parameter Out.

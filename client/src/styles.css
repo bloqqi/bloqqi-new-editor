@@ -657,11 +657,49 @@ body,
   color: var(--muted);
 }
 
-.add-form__checks {
+/* The ordered list of super types (order matters). */
+.super-types {
+  margin: 0;
+  padding-left: 22px;
   display: grid;
   gap: 4px;
-  max-height: 240px;
-  overflow-y: auto;
+}
+
+.super-types__item {
+  padding-left: 2px;
+}
+
+.super-types__item::marker {
+  color: var(--muted);
+}
+
+.super-types__item > * {
+  vertical-align: middle;
+}
+
+.super-types__name {
+  display: inline-block;
+  min-width: 110px;
+  margin-right: 6px;
+}
+
+.super-types__item button,
+.super-types__add button {
+  font: inherit;
+  min-width: 26px;
+  padding: 1px 6px;
+  margin-right: 2px;
+}
+
+.super-types__add {
+  display: flex;
+  gap: 6px;
+}
+
+.super-types__add select {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
 }
 
 .add-form__message {

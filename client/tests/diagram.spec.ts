@@ -688,7 +688,7 @@ test.describe.serial('moving nodes', () => {
     await expect.poll(() => readDrag()).toContain('acc1: Acc;');
   });
 
-  test('a new subtype from the palette; its super types can be changed', async ({ page }) => {
+  test('a new subtype from the palette; its super types can be changed and reordered', async ({ page }) => {
     await goto(page, '/?file=Drag.dia&type=Main');
     await page.getByTestId('palette-Acc').click({ button: 'right' });
     await page.getByRole('menuitem', { name: 'New subtype of Acc…' }).click();
@@ -700,11 +700,29 @@ test.describe.serial('moving nodes', () => {
     await expect(node(page, 'Acc::sum')).toBeVisible(); // inherited
     expect(readDrag()).toContain('diagramtype Acc2 extends Acc {\n}\n');
 
+    // The super types are an ordered list: add Main (at the end), move it first.
     await paneMenu(page);
     await page.getByRole('menuitem', { name: 'Super types…' }).click();
     const form = page.getByTestId('super-types-form');
-    await expect(form.getByLabel('Acc', { exact: true })).toBeChecked();
-    await form.getByLabel('Acc', { exact: true }).uncheck();
+    const list = form.getByTestId('super-types').locator('li');
+    await expect(list).toHaveText(['Acc↑↓×']);
+    await expect(form.getByRole('button', { name: 'Apply' })).toBeDisabled(); // nothing changed yet
+    await form.getByLabel('Super type to add').selectOption('Main');
+    await form.getByRole('button', { name: 'Add' }).click();
+    await expect(list).toHaveText(['Acc↑↓×', 'Main↑↓×']);
+    await form.getByRole('button', { name: 'Move Main up' }).click();
+    await expect(list).toHaveText(['Main↑↓×', 'Acc↑↓×']);
+    await form.getByRole('button', { name: 'Apply' }).click();
+    await expect(form).toHaveCount(0);
+    await expect.poll(() => readDrag()).toContain('diagramtype Acc2 extends Main, Acc {\n}\n');
+
+    // Remove both.
+    await paneMenu(page);
+    await page.getByRole('menuitem', { name: 'Super types…' }).click();
+    await expect(list).toHaveText(['Main↑↓×', 'Acc↑↓×']);
+    await form.getByRole('button', { name: 'Remove Main' }).click();
+    await form.getByRole('button', { name: 'Remove Acc' }).click();
+    await expect(form).toContainText('No super types');
     await form.getByRole('button', { name: 'Apply' }).click();
     await expect(form).toHaveCount(0);
     await expect(page.locator('.react-flow__node')).toHaveCount(0);

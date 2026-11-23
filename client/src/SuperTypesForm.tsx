@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 
 /**
- * The form for a diagram type's super types (its `extends` clause): one
- * checkbox per other diagram type of the file. The current super types keep
- * their order; newly ticked ones are added after them, in file order.
+ * The form for a diagram type's super types, i.e. its `extends A, B` clause.
+ * The order matters: the compiler inherits from the super types in the order
+ * written (each with its own super types first), so A's parameters, blocks
+ * and connections come before B's (e.g. the order of the type's ports), and
+ * B's interceptions apply after A's. The chosen super types are therefore an
+ * ordered list (move up/down, remove); others are added at the end.
  */
 export function SuperTypesForm({
   typeName,
@@ -25,27 +28,37 @@ export function SuperTypesForm({
   onSubmit: (superTypes: string[]) => void;
   onCancel: () => void;
 }) {
-  const [checked, setChecked] = useState(new Set(current));
+  const [chosen, setChosen] = useState<string[]>(current);
+  // Sorted, as in the old editor (DiagramTypePropertiesPage.getPossibleSuperTypes).
+  const addable = candidates.filter((t) => !chosen.includes(t)).sort();
+  const [toAdd, setToAdd] = useState<string>(addable[0] ?? '');
   const form = useRef<HTMLFormElement>(null);
-  useEffect(() => form.current?.querySelector<HTMLInputElement>('input')?.focus(), []);
+  useEffect(() => form.current?.querySelector<HTMLElement>('button, select')?.focus(), []);
+  // Keep the "add" choice valid as the list changes.
+  useEffect(() => {
+    if (!addable.includes(toAdd)) setToAdd(addable[0] ?? '');
+  }, [addable, toAdd]);
 
-  const result = () => [
-    ...current.filter((t) => checked.has(t)),
-    ...candidates.filter((t) => checked.has(t) && !current.includes(t)),
-  ];
-  const left = Math.min(screen.x, window.innerWidth - 260);
-  const top = Math.max(8, Math.min(screen.y, window.innerHeight - 120 - candidates.length * 24));
+  const move = (i: number, by: number) =>
+    setChosen((list) => {
+      const next = [...list];
+      [next[i], next[i + by]] = [next[i + by], next[i]];
+      return next;
+    });
+  const changed = chosen.join(',') !== current.join(',');
+  const left = Math.min(screen.x, window.innerWidth - 300);
+  const top = Math.max(8, Math.min(screen.y, window.innerHeight - 220 - chosen.length * 30));
 
   return (
     <form
       ref={form}
-      className="add-form"
+      className="add-form add-form--wide"
       data-testid="super-types-form"
       aria-label="Super types"
       style={{ left, top }}
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit(result());
+        onSubmit(chosen);
       }}
       onKeyDown={(e) => {
         if (e.key === 'Escape') {
@@ -55,29 +68,59 @@ export function SuperTypesForm({
       }}
     >
       <h3 className="add-form__title">{typeName} extends</h3>
-      {candidates.length === 0 ? (
-        <p className="add-form__none">There are no other diagram types in the file.</p>
+      {chosen.length === 0 ? (
+        <p className="add-form__none">No super types</p>
       ) : (
-        <div className="add-form__checks">
-          {candidates.map((t) => (
-            <label key={t} className="add-form__check">
-              <input
-                type="checkbox"
-                checked={checked.has(t)}
-                onChange={(e) =>
-                  setChecked((s) => {
-                    const next = new Set(s);
-                    if (e.target.checked) next.add(t);
-                    else next.delete(t);
-                    return next;
-                  })
-                }
-              />
-              {t}
-            </label>
+        <ol className="super-types" data-testid="super-types">
+          {chosen.map((t, i) => (
+            <li key={t} className="super-types__item">
+              <span className="super-types__name">{t}</span>
+              <button
+                type="button"
+                onClick={() => move(i, -1)}
+                disabled={i === 0}
+                aria-label={`Move ${t} up`}
+                title="Earlier: inherited before the ones below"
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                onClick={() => move(i, 1)}
+                disabled={i === chosen.length - 1}
+                aria-label={`Move ${t} down`}
+                title="Later: inherited after the ones above"
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                onClick={() => setChosen((list) => list.filter((x) => x !== t))}
+                aria-label={`Remove ${t}`}
+                title={`No longer extend ${t}`}
+              >
+                ×
+              </button>
+            </li>
           ))}
+        </ol>
+      )}
+      {addable.length > 0 && (
+        <div className="super-types__add">
+          <select value={toAdd} onChange={(e) => setToAdd(e.target.value)} aria-label="Super type to add">
+            {addable.map((t) => (
+              <option key={t}>{t}</option>
+            ))}
+          </select>
+          <button type="button" onClick={() => toAdd && setChosen((list) => [...list, toAdd])}>
+            Add
+          </button>
         </div>
       )}
+      <p className="add-form__message">
+        The order matters: {typeName} inherits from the first one first, e.g. its parameters come first and its
+        interceptions apply before those of the later ones.
+      </p>
       {error && (
         <p className="add-form__error" role="alert">
           {error}
@@ -87,7 +130,7 @@ export function SuperTypesForm({
         <button type="button" onClick={onCancel}>
           Cancel
         </button>
-        <button type="submit" disabled={busy}>
+        <button type="submit" disabled={busy || !changed}>
           Apply
         </button>
       </div>
