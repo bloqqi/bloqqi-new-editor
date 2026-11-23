@@ -1,3 +1,4 @@
+import { byName } from './names';
 import type { PaletteEntry } from './protocol';
 
 /** The drag-and-drop data type of a palette entry; its value is the type name. */
@@ -42,8 +43,9 @@ export function Palette({
   /** Right-click on one of the file's own types. */
   onEntryContextMenu: (event: React.MouseEvent, entry: PaletteEntry) => void;
 }) {
-  const local = entries.filter((e) => e.group === 'local');
-  const standard = entries.filter((e) => e.group === 'standard');
+  const sorted = [...entries].sort((a, b) => byName(a.name, b.name));
+  const local = sorted.filter((e) => e.group === 'local');
+  const standard = sorted.filter((e) => e.group === 'standard');
   return (
     <aside
       className={`palette${editable ? '' : ' palette--disabled'}`}

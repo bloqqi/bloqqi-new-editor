@@ -109,6 +109,9 @@
   ports fit, yellow ones do not; Esc cancels; `InterceptMode.tsx`). React Flow makes unselectable edges `inactive`
   (`pointer-events: none`); `styles.css` turns that off so inherited
   connections still get their menu.
+- Client: lists of types and files are shown sorted by name (`names.ts`:
+  case-insensitive, numbers by value); the server sends them in file order.
+  A type's super types keep their written order, since it matters.
 - Client: right-click menus (`ContextMenu.tsx`) for nodes, connections and
   the canvas; double-click or F2 opens Rename/Change value (`PromptForm.tsx`).
 - Edits are checked by reparsing before anything is written; an edit that adds

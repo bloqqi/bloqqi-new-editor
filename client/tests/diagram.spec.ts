@@ -783,6 +783,23 @@ test('the palette lists the types a block can be added of', async ({ page }) => 
   await expect(palette.getByTestId('palette-Add')).toBeVisible();
 });
 
+test('lists of types are sorted by name', async ({ page }) => {
+  await goto(page, '/?file=PLib.dia&type=PTrack');
+  const sorted = (names: string[]) => [...names].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }));
+  // Declared P, IPart, DPart, Rid, PI, PD, PTrack, Main.
+  const types = await page.getByTestId('type-select').locator('option').allTextContents();
+  expect(types).toEqual(['DPart', 'IPart', 'Main', 'P', 'PD', 'PI', 'PTrack', 'Rid']);
+  const palette = page.getByTestId('palette');
+  await palette.getByText('Standard library').click();
+  for (const group of await palette.locator('.palette__group').all()) {
+    const names = await group.locator('.palette__name').allTextContents();
+    expect(names.length).toBeGreaterThan(1);
+    expect(names).toEqual(sorted(names));
+  }
+  const files = await page.getByTestId('file-select').locator('option').allTextContents();
+  expect(files).toEqual(sorted(files));
+});
+
 test('the right-click menu greys out what cannot be changed here', async ({ page }) => {
   await goto(page, '/?file=PLib.dia&type=PTrack');
   await node(page, 'P::e').click({ button: 'right' });

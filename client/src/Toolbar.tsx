@@ -1,3 +1,4 @@
+import { sortedNames } from './names';
 import { REDO_KEYS, UNDO_KEYS } from './shortcuts';
 import type { Server } from './useServer';
 
@@ -27,7 +28,7 @@ export function Toolbar({
           disabled={status !== 'open'}
         >
           {!diagram && <option value="">–</option>}
-          {files.map((f) => (
+          {sortedNames(files).map((f) => (
             <option key={f} value={f}>
               {f}
             </option>
@@ -52,7 +53,7 @@ export function Toolbar({
           disabled={status !== 'open' || !diagram || diagram.diagramTypes.length === 0}
         >
           {(!diagram || !diagram.diagramType) && <option value="">–</option>}
-          {diagram?.diagramTypes.map((t) => (
+          {sortedNames(diagram?.diagramTypes ?? []).map((t) => (
             <option key={t} value={t}>
               {t}
             </option>

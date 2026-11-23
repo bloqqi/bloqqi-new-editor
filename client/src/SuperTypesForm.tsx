@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { sortedNames } from './names';
 
 /**
  * The form for a diagram type's super types, i.e. its `extends A, B` clause.
@@ -30,7 +31,8 @@ export function SuperTypesForm({
 }) {
   const [chosen, setChosen] = useState<string[]>(current);
   // Sorted, as in the old editor (DiagramTypePropertiesPage.getPossibleSuperTypes).
-  const addable = candidates.filter((t) => !chosen.includes(t)).sort();
+  // The chosen ones keep their order: it matters.
+  const addable = sortedNames(candidates.filter((t) => !chosen.includes(t)));
   const [toAdd, setToAdd] = useState<string>(addable[0] ?? '');
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => form.current?.querySelector<HTMLElement>('button, select')?.focus(), []);
