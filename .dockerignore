@@ -1,0 +1,12 @@
+# Only the sources go into the image build (see Dockerfile).
+.git
+**/.git
+build/
+lib/
+workspace/
+bloqqi-editor/
+bloqqi-compiler/src/generated/
+client/node_modules/
+client/dist/
+client/test-results/
+client/playwright-report/

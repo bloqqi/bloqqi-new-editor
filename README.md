@@ -29,6 +29,8 @@ appear immediately.
 
 ## Requirements
 
+(Or only Docker: see [Run with Docker](#run-with-docker).)
+
 - JDK 21 or later
 - [Apache Ant](https://ant.apache.org/)
 - Node.js 20 or later
@@ -64,6 +66,41 @@ ant run -Dworkspace=/path/to/dia/files -Dport=9000
 
 The editor shows and edits the `*.dia` files directly in that directory, and
 writes changes to them as you edit.
+
+## Run with Docker
+
+Only git and Docker are needed. Build the image from a clone made with
+`--recursive`:
+
+```sh
+git clone --recursive https://github.com/bloqqi/bloqqi-new-editor.git
+cd bloqqi-new-editor
+docker build -t bloqqi-editor .
+```
+
+The editor in the container works on the `.dia` files in its `/workspace`
+folder, so mount a folder there. Here it is the clone's `workspace/` folder
+(the one `ant run` uses; git ignores it). Create it first, so that it belongs
+to you rather than to Docker:
+
+```sh
+mkdir -p workspace
+docker run --rm -p 127.0.0.1:8080:8080 \
+  -v "$PWD/workspace:/workspace" --user "$(id -u):$(id -g)" bloqqi-editor
+```
+
+Then open <http://localhost:8080/> on the host. The editor reads and writes
+the files in that folder directly; an empty folder is fine (File ▾ → New
+file). Any other folder works too: `-v /path/to/dia/files:/workspace`.
+`--user` makes the editor write files as you, not as the container's user.
+The editor has no login, so `127.0.0.1:` makes it reachable only from the
+host itself. Use `-p 127.0.0.1:9000:8080` for another port.
+
+To start with the compiler's example files, copy them into the folder first:
+
+```sh
+cp bloqqi-compiler/examples/*.dia workspace/
+```
 
 ## Develop
 
