@@ -218,6 +218,33 @@ body,
   cursor: pointer;
 }
 
+/* The C view (generated code, read-only), in the text view's frame. */
+.c-view__variant {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+}
+
+.c-view__problems {
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+.c-view__problems p {
+  margin: 0 0 4px;
+}
+
+.c-view__problems ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--error);
+}
+
+.text-view__state code {
+  font-size: 12px;
+}
+
 .text-view__problems {
   max-height: 25%;
   overflow: auto;

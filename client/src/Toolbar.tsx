@@ -2,14 +2,14 @@ import { sortedNames } from './names';
 import { REDO_KEYS, UNDO_KEYS } from './shortcuts';
 import type { Server } from './useServer';
 
-export type ViewMode = 'diagram' | 'text';
+export type ViewMode = 'diagram' | 'text' | 'c';
 
 /** Why something is disabled while the text view has unsaved changes. */
 const UNSAVED = 'Save or revert the changes in the text first';
 
 /**
- * The header: file and diagram type selection, File ▾, New ▾, the Diagram/Text
- * switch, Undo/Redo and the connection status.
+ * The header: file and diagram type selection, File ▾, New ▾, the
+ * Diagram/Text/C switch, Undo/Redo and the connection status.
  */
 export function Toolbar({
   server,
@@ -112,6 +112,16 @@ export function Toolbar({
           title="Show and edit the file's text"
         >
           Text
+        </button>
+        <button
+          type="button"
+          data-testid="view-c"
+          aria-pressed={view === 'c'}
+          onClick={() => onView('c')}
+          disabled={!diagram}
+          title="Show the C code the Bloqqi compiler generates for the file (for its diagram type Main)"
+        >
+          C
         </button>
       </span>
       <span className="toolbar__group">

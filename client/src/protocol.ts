@@ -149,6 +149,7 @@ export type ServerMessage =
   | DiagramMessage
   | ErrorMessage
   | ProblemsMessage
+  | CCodeMessage
   | UpdateMessage
   | FilesMessage
   | NoticeMessage;
@@ -407,6 +408,24 @@ export interface CheckTextRequest {
   text: string;
 }
 
+/** How much C to generate: as `bloqqi-compiler --c=minimal`, or `--c` (with a `main()` loop). */
+export type CVariant = 'minimal' | 'with-driver';
+
+/** The C code the compiler generates for the file (the C view); answered with "cCode". */
+export interface GenerateCRequest {
+  type: 'generateC';
+  file: string;
+  variant: CVariant;
+}
+
+/** The answer to generateC: the code, or null and why the compiler would not generate it. */
+export interface CCodeMessage {
+  type: 'cCode';
+  variant: CVariant;
+  code: string | null;
+  problems: Problem[];
+}
+
 export type ClientMessage =
   | OpenRequest
   | MoveRequest
@@ -432,7 +451,8 @@ export type ClientMessage =
   | InterceptRequest
   | RestoreRequest
   | SetTextRequest
-  | CheckTextRequest;
+  | CheckTextRequest
+  | GenerateCRequest;
 
 export function webSocketUrl(): string {
   const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';

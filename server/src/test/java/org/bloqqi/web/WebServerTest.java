@@ -293,6 +293,32 @@ public class WebServerTest {
 		assertEquals("no echo to the tab that made the edit", null, a.poll(500));
 	}
 
+	/**
+	 * Regression: the watcher read the client's view before taking the compiler
+	 * lock, so while an edit was being saved it could compare the file with the
+	 * text from before that edit and push the client's own edit back as a change
+	 * made elsewhere (which clears the undo history in the browser).
+	 */
+	@Test
+	public void editsInQuickSuccessionAreNeverEchoed() throws Exception {
+		watchedWorkspace();
+		Client a = openAcc();
+		for (int i = 0; i < 40; i++) {
+			a.socket.sendText("{\"type\":\"move\",\"file\":\"TwoCounters.dia\",\"diagramType\":\"Acc\","
+					+ "\"nodes\":[{\"id\":\"add\",\"x\":" + (100 + i) + ",\"y\":45}]}", true);
+			JsonObject m = a.next();
+			assertEquals(m.toString(), "diagram", m.get("type").getAsString());
+			// The watcher reports a write once the file has been quiet for about
+			// 100 ms: wait about that long, so that its report comes while the
+			// next edit is being handled.
+			Thread.sleep(85 + (i % 8) * 5);
+		}
+		JsonObject m;
+		while ((m = a.poll(600)) != null) {
+			assertEquals("no echo of the client's own edits: " + m, "files", m.get("type").getAsString());
+		}
+	}
+
 	@Test
 	public void changesMadeOutsideTheEditorArePushed() throws Exception {
 		Path dir = watchedWorkspace();

@@ -17,29 +17,33 @@ import { useDiagramFlow } from './useDiagramFlow';
 import { useDialogs } from './useDialogs';
 import { useServer } from './useServer';
 
-/** The text view, with its editor (CodeMirror), is loaded when it is first shown. */
+/** The text and C views, with their editor (CodeMirror), are loaded when first shown. */
 const TextView = lazy(() => import('./TextView').then((m) => ({ default: m.TextView })));
+const CView = lazy(() => import('./CView').then((m) => ({ default: m.CView })));
 
-/** The view mode in the address bar (`view=text`), so that a reload keeps it. */
+/** The view mode in the address bar (`view=text`, `view=c`), so that a reload keeps it. */
 function urlView(): ViewMode {
-  return new URLSearchParams(window.location.search).get('view') === 'text' ? 'text' : 'diagram';
+  const view = new URLSearchParams(window.location.search).get('view');
+  return view === 'text' || view === 'c' ? view : 'diagram';
 }
 
 function setUrlView(view: ViewMode) {
   const params = new URLSearchParams(window.location.search);
-  if (view === 'text') params.set('view', 'text');
+  if (view !== 'diagram') params.set('view', view);
   else params.delete('view');
   window.history.replaceState(null, '', `?${params}`);
 }
 
 /**
  * The editor: the toolbar, the palette, the canvas with its menus and forms,
- * and the problems of the file; or, in the text view, the file's text. The parts:
+ * and the problems of the file; or, in the text view, the file's text; or, in
+ * the C view, the C code the compiler generates for it. The parts:
  * - useServer: the WebSocket, the shown diagram, undo/redo
  * - useDiagramFlow: the canvas' nodes and edges, and edits made on it directly
  * - useDialogs (rendered by Dialogs): the menu and the forms
  * - menus: what the menus offer
  * - TextView: the whole file in a text editor, saved explicitly
+ * - CView: the generated C code (read-only)
  */
 export function App() {
   // The server tells the open form whether its submission was accepted; the
@@ -294,6 +298,15 @@ export function App() {
             </Suspense>
           </main>
           <Dialogs dialogs={dialogs} diagram={diagram} busy={server.pendingCount > 0} />
+        </div>
+      )}
+      {view === 'c' && diagram && (
+        <div className="workarea">
+          <main className="text-main">
+            <Suspense fallback={<p className="empty">Loading…</p>}>
+              <CView file={diagram.file} text={diagram.text} request={server.request} />
+            </Suspense>
+          </main>
         </div>
       )}
       {view === 'diagram' && (

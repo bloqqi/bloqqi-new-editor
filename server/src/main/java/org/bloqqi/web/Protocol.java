@@ -60,6 +60,9 @@ import com.google.gson.JsonParser;
  * client -> server  {"type":"checkText", "file", "text"}
  *                   (answered with {"type":"problems", "problems":[{line,column,message}]}
  *                    for that text; nothing is written)
+ * client -> server  {"type":"generateC", "file", "variant"}   ("minimal" or "with-driver")
+ *                   (answered with {"type":"cCode", "variant", "code": the C code, or null
+ *                    if the compiler would refuse, "problems":[...] why; see CCode)
  * server -> client  {"type":"diagram", "file", "diagramType", "diagramTypes":[...],
  *                    "nodes":[{id,kind,label,typeName,inherited,inlined,error,x,y,width,height,
  *                              inPorts:[{name,typeName,y,connectable}], outPorts:[...],
@@ -96,7 +99,7 @@ final class Protocol {
 			AddDiagramTypeRequest, AddExternalFunctionRequest, RenameTypeRequest, DeleteTypeRequest,
 			AddSubtypeRequest, SetSuperTypesRequest, SetParametersRequest, CreateFileRequest, RenameFileRequest, DeleteFileRequest,
 			InterceptRequest,
-			RestoreRequest, SetTextRequest, CheckTextRequest {
+			RestoreRequest, SetTextRequest, CheckTextRequest, GenerateCRequest {
 		String file();
 	}
 
@@ -206,6 +209,10 @@ final class Protocol {
 
 	/** The problems {@code text} would have (the text view, while typing); nothing is written. */
 	record CheckTextRequest(String file, String text) implements Request {
+	}
+
+	/** The C code the compiler generates for the file (the C view); nothing is written. */
+	record GenerateCRequest(String file, String variant) implements Request {
 	}
 
 	/** How a request changed a file: its text before and after. */
@@ -338,6 +345,9 @@ final class Protocol {
 			return new SetTextRequest(required(o, "file"), string(o, "diagramType"),
 					required(o, "text"), required(o, "expected"));
 		}
+		if ("generateC".equals(type)) {
+			return new GenerateCRequest(required(o, "file"), required(o, "variant"));
+		}
 		if ("checkText".equals(type)) {
 			return new CheckTextRequest(required(o, "file"), required(o, "text"));
 		}
@@ -387,6 +397,16 @@ final class Protocol {
 		JsonObject o = new JsonObject();
 		o.addProperty("type", "problems");
 		o.add("problems", problemsJson(problems));
+		return GSON.toJson(o);
+	}
+
+	/** The answer to "generateC". */
+	static String cCode(String variant, CCode.Result result) {
+		JsonObject o = new JsonObject();
+		o.addProperty("type", "cCode");
+		o.addProperty("variant", variant);
+		o.addProperty("code", result.code());
+		o.add("problems", problemsJson(result.problems()));
 		return GSON.toJson(o);
 	}
 

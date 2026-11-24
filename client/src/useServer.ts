@@ -6,6 +6,7 @@ import { UndoHistory } from './history';
 import {
   webSocketUrl,
   type ClientMessage,
+  type CCodeMessage,
   type DiagramMessage,
   type ErrorMessage,
   type ProblemsMessage,
@@ -16,15 +17,16 @@ export type Status = 'connecting' | 'open' | 'reconnecting';
 
 /**
  * What a request was for. The server answers requests in order, so a queue of
- * these tells what each answer ("diagram", "problems" or "error") belongs to.
+ * these tells what each answer ("diagram", "problems", "cCode" or "error") belongs to.
  * A "form" request is an edit submitted from a form, which is told the
- * outcome; a "check" request asks for the problems of the text view's text
+ * outcome; a "query" request only asks for something (the problems of the text
+ * view's text, the generated C code) and changes nothing that is shown
  * (it does not count as pending: nothing waits for it).
  */
-export type RequestKind = 'open' | 'edit' | 'form' | 'undo' | 'redo' | 'check';
+export type RequestKind = 'open' | 'edit' | 'form' | 'undo' | 'redo' | 'query';
 
 /** An answer to a request. */
-export type Answer = DiagramMessage | ProblemsMessage | ErrorMessage;
+export type Answer = DiagramMessage | ProblemsMessage | CCodeMessage | ErrorMessage;
 
 interface Pending {
   kind: RequestKind;
@@ -34,7 +36,11 @@ interface Pending {
 }
 
 const defaultKind = (message: ClientMessage): RequestKind =>
-  message.type === 'open' ? 'open' : message.type === 'checkText' ? 'check' : 'edit';
+  message.type === 'open'
+    ? 'open'
+    : message.type === 'checkText' || message.type === 'generateC'
+      ? 'query'
+      : 'edit';
 
 /** Delay before reconnecting after the connection drops: doubles up to the maximum. */
 const RECONNECT_MIN_MS = 500;
@@ -64,7 +70,7 @@ export interface Server {
   /** Sends a request and resolves with its answer. */
   request: (message: ClientMessage, kind?: RequestKind) => Promise<Answer>;
   open: (file: string, diagramType?: string) => void;
-  /** Requests sent but not yet answered (not counting checks). */
+  /** Requests sent but not yet answered (not counting queries). */
   pendingCount: number;
   canUndo: boolean;
   canRedo: boolean;
@@ -95,7 +101,7 @@ export function useServer(onFormAnswered: (error: string | null) => void): Serve
   const pending = useRef<Pending[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
   const countPending = useCallback(
-    () => setPendingCount(pending.current.filter((p) => p.kind !== 'check').length),
+    () => setPendingCount(pending.current.filter((p) => p.kind !== 'query').length),
     [],
   );
   const formAnswered = useRef(onFormAnswered);
@@ -210,6 +216,7 @@ export function useServer(onFormAnswered: (error: string | null) => void): Serve
             break;
           }
           case 'problems':
+          case 'cCode':
             answered()?.resolve?.(message);
             break;
           // Pushed by the server, not answers: they leave the request queue alone.
@@ -231,7 +238,7 @@ export function useServer(onFormAnswered: (error: string | null) => void): Serve
           case 'error': {
             const request = answered();
             request?.resolve?.(message);
-            if (request?.kind === 'check') break;
+            if (request?.kind === 'query') break;
             if (request && (request.kind === 'undo' || request.kind === 'redo')) {
               // The file no longer is what the history expects (changed elsewhere).
               history.current.clear(request.file);

@@ -21,7 +21,9 @@
   what its client shows (file, type, and the text it was built from):
   `WorkspaceWatcher` reports changed `*.dia` files, and a socket whose file now
   has other text pushes an `update` (so other tabs and text-editor changes show
-  up; the socket's own edits are not echoed). New/deleted files push `files`;
+  up; the socket's own edits are not echoed: the watcher reads the socket's
+  view under `COMPILER_LOCK`, since a request writes the file and then updates
+  the view under it). New/deleted files push `files`;
   a deleted shown file a `notice`. Pushed messages are never answers, so the
   client's request queue ignores them; an `update` clears that file's undo
   history.
@@ -136,7 +138,7 @@
   is loaded, `annotationFolding.ts`): the whole file, saved
   explicitly (⌘S/Ctrl+S or Save). Every diagram message carries the file's
   `text`. Typing sends `checkText` (debounced; answered with `problems`,
-  nothing written; RequestKind `check`, not counted as pending). Save sends
+  nothing written; RequestKind `query`, not counted as pending). Save sends
   `setText {text, expected}` (expected = the text the editor is based on):
   written only if the file is unchanged, but *not* checked, since a text may
   be saved with errors (the diagram is then read-only); it is one undo step.
@@ -144,6 +146,17 @@
   changes, otherwise a banner offers Reload / Keep mine. While there are
   unsaved changes, File ▾, New ▾ and Undo/Redo are disabled, and leaving
   (Diagram, another file) asks Save / Discard / Cancel (`UnsavedTextForm`).
+- C view (toolbar "C", `?view=c`; `CView.tsx`, lazy, read-only CodeMirror with
+  `cLanguage.ts`): the C code the compiler generates for the file, as its
+  command line does (`CCode.java`): for the diagram type `Main` (no
+  parameters), only without errors (incl. `codeGenerationErrors()`, e.g. an
+  in-port without a connection, and `mainDiagramErrors()`), with the
+  compiler's own targets `--c=minimal` (default) or `--c` ("With driver").
+  `generateC {file, variant}` is answered with `cCode {code | null,
+  problems}` (RequestKind `query`); it is generated again when the file's text
+  changes. `CCodeTest` checks it equals the command line's output.
+  Note: the compiler's `--c` output does not compile with gcc 14 (`usleep`
+  without a feature macro); `--c=minimal` does.
 - Local and single-user for now. Compiler access is serialised by one global
   lock (see Gotchas).
 

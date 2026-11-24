@@ -22,6 +22,7 @@ In the browser you can:
 - create, rename and delete files
 - switch to the text view to read and edit the whole file, with problems
   shown as you type
+- see the C code the Bloqqi compiler generates for the file (C view)
 - undo and redo every edit
 
 Changes made to the file elsewhere, such as in a text editor or another tab,

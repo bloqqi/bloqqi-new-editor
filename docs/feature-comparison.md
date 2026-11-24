@@ -19,6 +19,7 @@ one in [README.md](../README.md) and [CLAUDE.md](../CLAUDE.md). State as of
 | Connection router (straight/Manhattan) | ➖ hidden preference | ❌ always orthogonal |
 | Print | ✅ | ❌ |
 | Text view of the file | ❌ | ✅ with live checking; layout blocks greyed and folded |
+| Generated C code | ❌ | ✅ C view, as the compiler's `--c=minimal` / `--c`, for `Main` |
 
 ## Editing the diagram
 

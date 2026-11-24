@@ -1,6 +1,6 @@
 // Keyboard shortcuts that are not React Flow's own (Delete is handled by the canvas).
 
-import { useEffect } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { DiagramFlowNode } from './nodes';
 
 export const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
@@ -13,23 +13,33 @@ function typing(e: KeyboardEvent): boolean {
   return !!t && (t.isContentEditable || t.tagName === 'INPUT' || t.tagName === 'TEXTAREA');
 }
 
-/** Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y (⌘ on a Mac), except while typing in a field. */
+/**
+ * Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y (⌘ on a Mac), except while typing in a field.
+ * The listener always calls the latest undo/redo: they change with every
+ * answer (whether something can be undone), and a listener re-registered in
+ * an effect would only see them after the screen was updated, so a key
+ * pressed right after an answer could be ignored.
+ */
 export function useUndoRedoKeys(undo: () => void, redo: () => void) {
+  const latest = useRef({ undo, redo });
+  useLayoutEffect(() => {
+    latest.current = { undo, redo };
+  }, [undo, redo]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!(IS_MAC ? e.metaKey : e.ctrlKey) || e.altKey || typing(e)) return;
       const key = e.key.toLowerCase();
       if (key === 'z' && !e.shiftKey) {
         e.preventDefault();
-        undo();
+        latest.current.undo();
       } else if ((key === 'z' && e.shiftKey) || (key === 'y' && !IS_MAC)) {
         e.preventDefault();
-        redo();
+        latest.current.redo();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [undo, redo]);
+  }, []);
 }
 
 /** F2 renames the selected node (or changes the selected literal's value). */

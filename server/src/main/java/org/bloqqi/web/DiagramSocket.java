@@ -93,6 +93,10 @@ public final class DiagramSocket implements Session.Listener.AutoDemanding {
 					List<Problem> problems = new java.util.ArrayList<>(checked.syntaxErrors());
 					problems.addAll(checked.semanticErrors());
 					json = Protocol.problems(problems);
+				} else if (request instanceof Protocol.GenerateCRequest generate) {
+					// Not shown either: the C view shows the file's code beside the diagram.
+					json = Protocol.cCode(generate.variant(),
+							CCode.generate(workspace.load(generate.file()), generate.variant()));
 				} else {
 					Answer answer = handle(request);
 					view = new View(answer.diagram().file(), answer.diagram().diagramType(), answer.text());
@@ -147,6 +151,7 @@ public final class DiagramSocket implements Session.Listener.AutoDemanding {
 			case Protocol.RestoreRequest restore -> restore(file, restore);
 			case Protocol.SetTextRequest r -> setText(file, r);
 			case Protocol.CheckTextRequest r -> throw new IllegalStateException("handled above");
+			case Protocol.GenerateCRequest r -> throw new IllegalStateException("handled above");
 			case Protocol.MoveRequest move ->
 				save(file, move.diagramType(), DiagramEdits.moveNodes(file, move.diagramType(), move.moves()));
 			case Protocol.ConnectRequest connect -> save(file, connect.diagramType(),
@@ -271,12 +276,17 @@ public final class DiagramSocket implements Session.Listener.AutoDemanding {
 	 * type if it still exists. If the file is gone, say so ("notice").
 	 */
 	void fileChanged(String fileName) {
-		View v = view;
-		if (v == null || (fileName != null && !fileName.equals(v.file()))) {
-			return;
-		}
 		String json;
 		synchronized (BloqqiLoader.COMPILER_LOCK) {
+			// Read what the client shows under the lock: a request being handled
+			// writes the file and then updates the view, both under the lock.
+			// Read before it, the view could predate the client's own edit, which
+			// would then be pushed back as a change made elsewhere (clearing the
+			// client's undo history).
+			View v = view;
+			if (v == null || (fileName != null && !fileName.equals(v.file()))) {
+				return;
+			}
 			LoadedFile file;
 			try {
 				file = workspace.load(v.file());
