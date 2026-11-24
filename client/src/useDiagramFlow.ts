@@ -1,7 +1,7 @@
 // The canvas' state and the edits made on it directly: React Flow nodes and
 // edges (selection, dragging), connecting, deleting and adding blocks.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   applyEdgeChanges,
   applyNodeChanges,
@@ -42,28 +42,43 @@ export interface DiagramFlow {
   literalConnections: Map<string, string>;
 }
 
-export function useDiagramFlow(diagram: DiagramMessage | null, send: (message: ClientMessage) => void): DiagramFlow {
-  // Nodes are controlled here so they can be dragged; every diagram from the
-  // server (including the answer to a move) replaces them.
-  const [nodes, setNodes] = useState<DiagramFlowNode[]>([]);
-  const shown = useRef<string | null>(null);
-  useEffect(() => {
-    const key = diagram ? `${diagram.file}/${diagram.diagramType}` : null;
-    const sameDiagram = key === shown.current;
-    shown.current = key;
-    setNodes((previous) => {
-      // Keep the selection across updates of the same diagram (e.g. after a move).
-      const selected = new Set(sameDiagram ? previous.filter((n) => n.selected).map((n) => n.id) : []);
-      return toFlowNodes(diagram).map((n) => (selected.has(n.id) ? { ...n, selected: true } : n));
-    });
-  }, [diagram]);
+interface FlowState {
+  /** The diagram the nodes and edges were made from. */
+  diagram: DiagramMessage | null;
+  nodes: DiagramFlowNode[];
+  edges: FlowEdgeType[];
+}
 
-  // Edges are controlled too, so that they can be selected (for Delete); every
-  // diagram from the server replaces them, which clears the selection.
-  const [edges, setEdges] = useState<FlowEdgeType[]>([]);
-  useEffect(() => setEdges(toFlowEdges(diagram)), [diagram]);
+const diagramKey = (d: DiagramMessage | null) => (d ? `${d.file}/${d.diagramType}` : null);
+
+export function useDiagramFlow(diagram: DiagramMessage | null, send: (message: ClientMessage) => void): DiagramFlow {
+  // Nodes are controlled here so they can be dragged, and edges so that they
+  // can be selected (for Delete). Every diagram from the server (including
+  // the answer to a move) replaces them, while rendering: the canvas, which is
+  // created anew for each shown type, must never get the previous diagram's
+  // nodes (it would measure and fit those, then have them replaced).
+  const [flow, setFlow] = useState<FlowState>(() => ({
+    diagram,
+    nodes: toFlowNodes(diagram),
+    edges: toFlowEdges(diagram),
+  }));
+  let current = flow;
+  if (flow.diagram !== diagram) {
+    // Keep the node selection across updates of the same diagram (e.g. after a
+    // move); the edge selection is cleared.
+    const same = diagramKey(flow.diagram) === diagramKey(diagram);
+    const selected = new Set(same ? flow.nodes.filter((n) => n.selected).map((n) => n.id) : []);
+    current = {
+      diagram,
+      nodes: toFlowNodes(diagram).map((n) => (selected.has(n.id) ? { ...n, selected: true } : n)),
+      edges: toFlowEdges(diagram),
+    };
+    setFlow(current);
+  }
+  const { nodes, edges } = current;
+
   const onEdgesChange = useCallback(
-    (changes: EdgeChange<FlowEdgeType>[]) => setEdges((current) => applyEdgeChanges(changes, current)),
+    (changes: EdgeChange<FlowEdgeType>[]) => setFlow((s) => ({ ...s, edges: applyEdgeChanges(changes, s.edges) })),
     [],
   );
 
@@ -73,7 +88,10 @@ export function useDiagramFlow(diagram: DiagramMessage | null, send: (message: C
 
   const onNodesChange = useCallback(
     (changes: NodeChange<DiagramFlowNode>[]) =>
-      setNodes((current) => moveLiterals(applyNodeChanges(clampToEdge(changes, clearance), current), targets)),
+      setFlow((s) => ({
+        ...s,
+        nodes: moveLiterals(applyNodeChanges(clampToEdge(changes, clearance), s.nodes), targets),
+      })),
     [targets, clearance],
   );
 

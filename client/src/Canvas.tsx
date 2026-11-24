@@ -9,6 +9,7 @@ import {
   useNodesInitialized,
   useReactFlow,
   useStore,
+  useUpdateNodeInternals,
   ViewportPortal,
   type EdgeChange,
   type EdgeMouseHandler,
@@ -229,9 +230,43 @@ function Flow({
           <div className="allowed-area" data-testid="allowed-area" aria-hidden="true" />
         </ViewportPortal>
       )}
+      <RemeasureNodes />
       <FitControls origin={origin} empty={!!diagram?.diagramType && diagram.nodes.length === 0} onFitted={onFitted} />
     </ReactFlow>
   );
+}
+
+/** How long a connection may lack a measured handle before its nodes are measured again. */
+const REMEASURE_MS = 100;
+
+/**
+ * React Flow draws a connection only once it has measured both nodes'
+ * handles, and measures a node again only in some cases (a new node, a
+ * changed size). Rarely, a node that stays on screen while the diagram is
+ * replaced (e.g. an inherited parameter) was left without measured handles,
+ * and its connections were then never drawn until the page was reloaded.
+ * This measures such nodes again.
+ */
+function RemeasureNodes() {
+  const unmeasured = useStore((s) => {
+    const ids = new Set<string>();
+    const measured = (node: string, handle: string | null | undefined, type: 'source' | 'target') =>
+      !!s.nodeLookup.get(node)?.internals.handleBounds?.[type]?.some((h) => h.id === (handle ?? null));
+    for (const e of s.edges) {
+      if (!s.nodeLookup.has(e.source) || !s.nodeLookup.has(e.target)) continue;
+      if (!measured(e.source, e.sourceHandle, 'source')) ids.add(e.source);
+      if (!measured(e.target, e.targetHandle, 'target')) ids.add(e.target);
+    }
+    return [...ids].sort().join('\n');
+  });
+  const updateNodeInternals = useUpdateNodeInternals();
+  useEffect(() => {
+    if (!unmeasured) return;
+    // Normally the nodes are measured within a frame; only then step in.
+    const timer = window.setTimeout(() => updateNodeInternals(unmeasured.split('\n')), REMEASURE_MS);
+    return () => window.clearTimeout(timer);
+  }, [unmeasured, updateNodeInternals]);
+  return null;
 }
 
 /**

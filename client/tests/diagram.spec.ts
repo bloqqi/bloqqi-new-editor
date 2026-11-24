@@ -943,6 +943,41 @@ async function paneMenuAt(page: Page) {
   await page.mouse.click(pane.x + pane.width - 40, pane.y + pane.height - 40, { button: 'right' });
 }
 
+test('connections are drawn even if a node that stays on screen is not measured again', async ({ page }) => {
+  // React Flow measures a node's handles when the browser reports its size.
+  // Rarely, after the diagram was replaced, a node that stayed on screen (an
+  // inherited parameter) was left unmeasured and its connections were missing
+  // until a reload. Simulate that: after the first fit, the browser no longer
+  // reports the sizes of P's nodes.
+  await page.addInitScript(() => {
+    const Native = window.ResizeObserver;
+    window.ResizeObserver = class extends Native {
+      constructor(callback: ResizeObserverCallback) {
+        super((entries, observer) => {
+          const drop = (window as { dropSizes?: boolean }).dropSizes;
+          const kept = entries.filter((e) => !(drop && e.target.getAttribute('data-id')?.startsWith('P::')));
+          if (kept.length > 0) callback(kept, observer);
+        });
+      }
+    };
+  });
+  // Remeasure.dia is a copy of PLib.dia that only this test changes.
+  const file = resolve('..', 'build', 'e2e-workspace', 'Remeasure.dia');
+  await goto(page, '/?file=Remeasure.dia&type=PTrack');
+  const edges = page.locator('.react-flow__edge');
+  const count = await edges.count();
+  expect(count).toBeGreaterThan(5);
+  await page.evaluate(() => ((window as { dropSizes?: boolean }).dropSizes = true));
+
+  // SelReal_1 is moved on disk: the diagram is sent again and replaces the nodes.
+  const text = readWorkspaceFile('Remeasure.dia');
+  writeFileSync(file, text.replace('SelReal_1 = (298, 10, 44, 46)', 'SelReal_1 = (298, 30, 44, 46)'));
+  await expect(node(page, 'SelReal_1')).toHaveAttribute('style', /translate\(298px, 30px\)/);
+  await expect(edges).toHaveCount(count);
+  await page.waitForTimeout(300);
+  await expect(edges).toHaveCount(count);
+});
+
 test('an inherited connection can be intercepted in a subtype', async ({ page }) => {
   // Intercept.dia is a copy of PLib.dia that only this test edits.
   const file = resolve('..', 'build', 'e2e-workspace', 'Intercept.dia');
