@@ -229,10 +229,10 @@ export interface RestoreRequest {
   expected: string;
 }
 
-/** Types offered for new parameters and variables (DiagramEdits.SIMPLE_TYPES). */
+/** Types offered for new parameters and variables (NodeEdits.SIMPLE_TYPES). */
 export const SIMPLE_TYPES = ['Int', 'Bool', 'Real'] as const;
 
-/** Kinds of variable (DiagramEdits.VARIABLE_KINDS). */
+/** Kinds of variable (NodeEdits.VARIABLE_KINDS). */
 export const VARIABLE_KINDS = ['var', 'input', 'output'] as const;
 
 /** Connect a literal (one token: 3, 2.5, true, "text") to a free target. Answered like a move. */

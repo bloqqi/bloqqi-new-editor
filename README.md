@@ -116,7 +116,7 @@ docker build -t bloqqi-editor .
 
 ## Develop
 
-- `ant test` runs the server tests (JUnit).
+- `ant test` runs the unit tests: the server's (JUnit) and the client's (Vitest).
 - `ant lint` checks the client's code (ESLint, and Prettier's formatting);
   `cd client && npm run format` formats it.
 - `ant e2e` runs the browser tests (Playwright). Before the first run, install

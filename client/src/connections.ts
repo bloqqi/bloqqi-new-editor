@@ -1,5 +1,5 @@
 // Which handles can be connected, for feedback while a connection is dragged.
-// This mirrors the server's checks (DiagramEdits.connect), which have the
+// This mirrors the server's checks (ConnectionEdits.connect), which have the
 // final say: the server knows type compatibility, accessibility and cycles.
 
 import type { DiagramNode } from './protocol';

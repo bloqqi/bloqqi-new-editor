@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { DiagramFlowNode } from './nodes';
 
-export const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
+export const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 export const UNDO_KEYS = IS_MAC ? '⌘Z' : 'Ctrl+Z';
 export const REDO_KEYS = IS_MAC ? '⇧⌘Z' : 'Ctrl+Shift+Z';
 

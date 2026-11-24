@@ -204,7 +204,16 @@
 		</javac>
 	</target>
 
-	<target name="test" depends="test-compile" description="Run the server (JUnit) tests">
+	<target name="test" depends="test-server,test-client"
+			description="Run the server (JUnit) and client (Vitest) unit tests"/>
+
+	<target name="test-client" depends="client-install" description="Run the client's unit tests (Vitest)">
+		<exec executable="npm" dir="${client.dir}" failonerror="true">
+			<arg value="test"/>
+		</exec>
+	</target>
+
+	<target name="test-server" depends="test-compile" description="Run the server (JUnit) tests">
 		<junit fork="true" forkmode="once" haltonfailure="false" failureproperty="tests.failed"
 				printsummary="false" dir="${basedir}">
 			<sysproperty key="bloqqi.examples" value="${examples}"/>

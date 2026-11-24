@@ -213,6 +213,10 @@
   The same goes for the Jetty jars.
 - Every diagram operation gets a test: apply it to an example file, then
   check that the new text reparses and the AST is as expected.
+- Pure client logic (no React, no DOM: `flow.ts`, `connections.ts`,
+  `history.ts`, `cOutline.ts`, ...) gets Vitest unit tests next to it
+  (`*.test.ts`, small diagrams from `testFixtures.ts`); interactions are tested
+  in the browser (Playwright).
 - Client code passes `ant lint` (ESLint with no warnings, Prettier's format)
   before it is committed.
 
@@ -229,7 +233,9 @@ run `ant test e2e`, then commit the submodule pointer.
 - Lint (client): `ant lint` (ESLint with the TypeScript rules and React's rules
   of hooks, `client/eslint.config.js`; and Prettier, `client/.prettierrc.json`:
   single quotes, 120 columns). Format with `cd client && npm run format`.
-- Test (server, JUnit): `ant test`
+- Test (unit): `ant test` runs both `ant test-server` (JUnit) and
+  `ant test-client` (Vitest: `client/src/*.test.ts`, in Node, under a second;
+  `cd client && npm test`)
 - Test (browser, Playwright): `ant e2e` (builds first; starts the server on
   port 8091 with a fresh copy of the examples in `build/e2e-workspace`, plus
   `Drag.dia`, which only the drag tests edit). First time only: `cd client && npx playwright install chromium`
