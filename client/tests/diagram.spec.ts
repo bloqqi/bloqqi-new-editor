@@ -801,6 +801,26 @@ test('connections touch parameter and variable boxes', async ({ page }) => {
   near(byId.get('add.out:out->state.in')!.end.x, stateBox.x);
 });
 
+test('dragging a connection selects no text (Safari would turn the window blue)', async ({ page }) => {
+  await goto(page, '/?file=TwoCounters.dia&type=Acc');
+  await page.evaluate(() =>
+    document.addEventListener('mousedown', (e) => ((window as { prevented?: boolean }).prevented = e.defaultPrevented)),
+  );
+  const from = (await handle(page, 'add', 'out:out').boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from.x + 80, from.y + 120, { steps: 5 });
+  await expect(page.locator('.react-flow__connectionline')).toHaveCount(1);
+  // The press's default (starting a text selection) was cancelled, and the page cannot be selected meanwhile.
+  expect(await page.evaluate(() => (window as { prevented?: boolean }).prevented)).toBe(true);
+  expect(await page.evaluate(() => getComputedStyle(document.querySelector('.app')!).userSelect)).toBe('none');
+  expect(await page.evaluate(() => window.getSelection()!.toString())).toBe('');
+  await page.keyboard.press('Escape');
+  await page.mouse.up();
+  await expect(page.locator('.react-flow__connectionline')).toHaveCount(0);
+  expect(await page.evaluate(() => getComputedStyle(document.querySelector('.app')!).userSelect)).not.toBe('none');
+});
+
 test('the palette lists the types a block can be added of', async ({ page }) => {
   await goto(page, '/?file=TwoCounters.dia&type=Acc');
   const palette = page.getByTestId('palette');

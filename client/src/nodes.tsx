@@ -79,6 +79,9 @@ function ConnectionHandle({
       style={style}
       title={title}
       isConnectable={connectable && !pick}
+      // Safari starts selecting text when a drag begins on the page, which
+      // turned the whole window blue while a connection was dragged.
+      onMouseDown={connectable ? (e) => e.preventDefault() : undefined}
       onClick={
         pickable
           ? (e) => {

@@ -30,6 +30,13 @@ body,
   margin: 0;
 }
 
+/* While a connection is dragged, nothing can be selected (Safari would otherwise
+   select the text the mouse passes over). */
+.app:has(.react-flow__connectionline) {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .app {
   display: flex;
   flex-direction: column;
