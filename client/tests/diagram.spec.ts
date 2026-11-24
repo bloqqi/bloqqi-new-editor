@@ -91,7 +91,7 @@ test('shows parameters, variables, ports and connections', async ({ page }) => {
   const add = node(page, 'add');
   await expect(add.locator('.port--in')).toHaveCount(2);
   await expect(add.locator('.port--out')).toHaveCount(1);
-  await expect(add.locator('.port--in').first()).toHaveAttribute('title', 'in1: Int');
+  await expect(add.locator('.port--in').first()).toHaveAttribute('aria-label', 'in1: Int');
 
   await expect(page.locator('.react-flow__edge')).toHaveCount(4);
   // (Not toBeVisible: a straight horizontal line has an empty bounding box.)
@@ -881,6 +881,25 @@ test("a block's anonymous type (its features) can be opened, read-only", async (
   await page.getByTestId('back').click();
   await expect(typeSelect).toHaveValue('Main');
   await expect(node(page, 'pid')).toBeVisible();
+});
+
+test('hovering a port shows its name and type, also where it cannot be connected', async ({ page }) => {
+  await goto(page, '/?file=PLib.dia&type=PTrack');
+  const tip = page.locator('.port-tip');
+  // A free port of a local block, and an inherited block's port (not connectable).
+  await handle(page, 'SelReal_1', 'in:in2').hover();
+  await expect(tip).toHaveText('in2: Real');
+  await handle(page, 'P::PPart', 'out:out').hover();
+  await expect(tip).toHaveText('out: Real');
+  await page.mouse.move(5, 5);
+  await expect(tip).toHaveCount(0);
+  // It does not start a connection.
+  const port = (await handle(page, 'P::PPart', 'in:in2').boundingBox())!;
+  await page.mouse.move(port.x + port.width / 2, port.y + port.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(port.x - 60, port.y + 40, { steps: 4 });
+  await expect(page.locator('.react-flow__connectionline')).toHaveCount(0);
+  await page.mouse.up();
 });
 
 test('lists of types are sorted by name', async ({ page }) => {

@@ -15,6 +15,7 @@ one in [README.md](../README.md) and [CLAUDE.md](../CLAUDE.md). State as of
 | Opening anonymous types (blocks with features) | ✅ via outline | ✅ "Open Main$pid" on the block; read-only, laid out afresh |
 | Open Declaration (block → its type) | ✅ (no way back) | ✅ with Back (toolbar ← and the browser's Back/Forward) |
 | Zoom, fit | ✅ zoom combo | ✅ zoom/fit buttons |
+| Port name and type on hover (`in1: Int`) | ✅ | ✅ |
 | "Show types" on blocks and variables | ✅ preference | ➖ tooltip only |
 | Connection router (straight/Manhattan) | ➖ hidden preference | ❌ always orthogonal |
 | Print | ✅ | ❌ |

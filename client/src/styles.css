@@ -609,6 +609,36 @@ body,
   transform: none;
 }
 
+/* Every port gets the mouse, for its label (React Flow turns it off for
+   handles that cannot be connected; those are also marked not connectable). */
+.react-flow__handle.port {
+  pointer-events: all;
+}
+
+/* "name: Type" beside a port while the mouse is on it, as in the old editor. */
+.port-tip {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 1px 5px;
+  border: 1px solid #a0a0a8;
+  background: #ffffff;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.port-tip--in {
+  right: calc(100% + 4px);
+}
+
+.port-tip--out {
+  left: calc(100% + 4px);
+}
+
 .react-flow__handle.port--in {
   left: -6px;
 }

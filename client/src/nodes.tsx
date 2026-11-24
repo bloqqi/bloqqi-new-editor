@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Handle, Position, useConnection, type Node, type NodeProps } from '@xyflow/react';
 import { canConnect, handleInfo } from './connections';
 import { useEditing } from './editing';
@@ -47,6 +48,7 @@ function ConnectionHandle({
 }) {
   const from = useConnectingFrom();
   const editing = useEditing();
+  const [hover, setHover] = useState(false);
   const info = handleInfo(data, id);
   const connectable = canvasConnectable && !!info?.connectable;
   const classes = [className];
@@ -77,8 +79,14 @@ function ConnectionHandle({
       position={side === 'in' ? Position.Left : Position.Right}
       className={classes.join(' ')}
       style={style}
-      title={title}
+      aria-label={title}
       isConnectable={connectable && !pick}
+      // A port that cannot be connected still gets the mouse (for its label), so
+      // it must not start or end a connection either.
+      isConnectableStart={connectable && !pick}
+      isConnectableEnd={connectable && !pick}
+      onMouseEnter={title ? () => setHover(true) : undefined}
+      onMouseLeave={title ? () => setHover(false) : undefined}
       // Safari starts selecting text when a drag begins on the page, which
       // turned the whole window blue while a connection was dragged.
       onMouseDown={connectable ? (e) => e.preventDefault() : undefined}
@@ -90,7 +98,14 @@ function ConnectionHandle({
             }
           : undefined
       }
-    />
+    >
+      {/* As in the old editor: "name: Type" beside the port, while the mouse is on it. */}
+      {hover && title && (
+        <span className={`port-tip port-tip--${side}`} role="tooltip">
+          {title}
+        </span>
+      )}
+    </Handle>
   );
 }
 
