@@ -230,7 +230,7 @@ only its `gen` target and compiles it, like the server, with `release=21` into
 `build/compiler`. To update the compiler: `git -C bloqqi-compiler checkout <commit>`,
 run `ant test e2e`, then commit the submodule pointer.
 - Build: `ant build` (downloads pinned jars into `lib/`, builds compiler, server
-  and client; `npm ci` runs only if `client/node_modules` is missing or older
+  and client, fills an empty `workspace/`; `npm ci` runs only if `client/node_modules` is missing or older
   than `client/package-lock.json`)
 - Lint (client): `ant lint` (ESLint with the TypeScript rules and React's rules
   of hooks, `client/eslint.config.js`; and Prettier, `client/.prettierrc.json`:
@@ -243,18 +243,23 @@ run `ant test e2e`, then commit the submodule pointer.
   `Drag.dia`, which only the drag tests edit). First time only: `cd client && npx playwright install chromium`
 - Single JUnit class: `ant test-compile` then
   `java -cp "build/server/classes:build/server/test-classes:build/compiler/classes:lib/*:bloqqi-compiler/tools/beaver-rt.jar:bloqqi-compiler/tools/gson-2.6.2.jar" -Dbloqqi.examples=bloqqi-compiler/examples org.junit.runner.JUnitCore org.bloqqi.web.DiagramBuilderTest`
-- Docker: `docker build -t bloqqi-editor .`, then `mkdir -p workspace` and
-  `docker run --rm -p 127.0.0.1:8080:8080 -v "$PWD/workspace:/workspace"
-  --user "$(id -u):$(id -g)" bloqqi-editor` (README). The `Dockerfile` builds the server with Ant and the
+- Docker: `docker compose up --build` (`compose.yaml`: port 127.0.0.1:8080,
+  `./workspace` mounted at `/workspace`, user `${HOST_UID:-1000}:${HOST_GID:-1000}`,
+  not `UID`, which is read-only in bash), or `docker build` + `docker run`
+  (README). The `Dockerfile` builds the server with Ant and the
   client with npm in separate stages (base images and Ant pinned; `ant deps`
   has its own layer, depending only on `build.xml`); the runtime
-  is a JRE with the classes, `lib/*.jar` and `client/dist`. There is no Docker
-  in this dev environment; the image was tried on the user's machine
-  (2026-11-24) and works.
-- Run: `ant run` → http://localhost:8080/?file=PLib.dia&type=PTrack
+  is a JRE with the classes, `lib/*.jar`, `client/dist` and the compiler's
+  `examples/`, started with `Main --examples` (fills an empty workspace on
+  start). There is no Docker in this dev environment; the image was tried on
+  the user's machine (2026-11-24) and works (compose not tried yet).
+- Run: `ant run` (builds first) → http://localhost:8080/?file=PLib.dia&type=PTrack
   (options: `-Dport=...`, `-Dworkspace=<dir of .dia files>`). The default
-  workspace is `workspace/` (git-ignored, kept by `ant clean`), created on first
-  run as a copy of the compiler's `examples/`. Delete it to start over.
+  workspace is `workspace/`: only its `.gitkeep` is in git, its files are
+  ignored and kept by `ant clean`. While it is missing or has no non-hidden
+  files, `ant build`/`ant run` fill it with the compiler's examples that load
+  without errors (`Workspace.addExamples`, via `AddExamples`); otherwise it
+  is left alone. Delete its files to start over.
 - Client dev server with hot reload: `ant run` in one terminal, then
   `cd client && npm run dev` (proxies `/ws` to port 8080)
 - Clean: `ant clean` (keeps `lib/` and `node_modules/`)

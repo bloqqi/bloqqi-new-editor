@@ -173,7 +173,7 @@
 		</exec>
 	</target>
 
-	<target name="build" depends="server,client" description="Build server and client"/>
+	<target name="build" depends="server,client,workspace" description="Build server and client (and fill an empty workspace/)"/>
 
 	<target name="lint" depends="client-install" description="Check the client's code: ESLint and Prettier">
 		<exec executable="npm" dir="${client.dir}" failonerror="true">
@@ -276,24 +276,31 @@
 		</sequential>
 	</macrodef>
 
+	<!-- The default workspace/ gets the compiler's examples that load cleanly
+	     when it does not exist or has no (non-hidden) files; once it has at least
+	     one file, it is left alone (Workspace.addExamples). -->
 	<target name="workspace-check">
-		<condition property="workspace.create">
-			<and>
-				<equals arg1="${workspace}" arg2="${default.workspace}"/>
-				<not><available file="${workspace}" type="dir"/></not>
-			</and>
+		<condition property="workspace.empty">
+			<resourcecount count="0">
+				<fileset dir="${default.workspace}" includes="*" excludes=".*" erroronmissingdir="false"/>
+			</resourcecount>
 		</condition>
 	</target>
 
-	<target name="workspace" depends="workspace-check" if="workspace.create"
-			description="Create workspace/ as a copy of the compiler's examples">
-		<copy todir="${workspace}">
-			<fileset dir="${examples}" includes="*.dia"/>
-		</copy>
+	<target name="workspace" depends="server,workspace-check" if="workspace.empty"
+			description="Fill an empty or missing workspace/ with the compiler's examples that load cleanly">
+		<java classname="org.bloqqi.web.AddExamples" fork="true" failonerror="true">
+			<classpath>
+				<path refid="server.classpath"/>
+				<pathelement location="${server.classes}"/>
+			</classpath>
+			<arg file="${default.workspace}"/>
+			<arg file="${examples}"/>
+		</java>
 	</target>
 
-	<target name="run" depends="server,workspace"
-			description="Start the server on workspace/ (-Dport=..., -Dworkspace=dir of .dia files)">
+	<target name="run" depends="build"
+			description="Build, then start the server on workspace/ (-Dport=..., -Dworkspace=dir of .dia files)">
 		<start-server workspace="${workspace}"/>
 	</target>
 

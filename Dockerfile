@@ -1,12 +1,16 @@
-# The Bloqqi web editor in a container. Build from a clone with the compiler
-# submodule (git clone --recursive ...):
+# The Bloqqi web editor in a container. From a clone with the compiler
+# submodule (git clone --recursive ...), compose.yaml builds and runs it:
+#
+#   docker compose up --build
+#
+# or without compose:
 #
 #   docker build -t bloqqi-editor .
-#   mkdir -p workspace
 #   docker run --rm -p 127.0.0.1:8080:8080 -v "$PWD/workspace:/workspace" --user "$(id -u):$(id -g)" bloqqi-editor
 #
 # then open http://localhost:8080/ on the host. The editor reads and writes the
-# .dia files in the folder mounted at /workspace (see README.md, "Run with Docker").
+# .dia files in the folder mounted at /workspace; an empty one first gets the
+# compiler's examples (see README.md, "Run with Docker").
 
 # ---- Server and compiler (Java 21, Ant) ----
 FROM eclipse-temurin:21.0.12.1_1-jdk-noble AS server
@@ -49,6 +53,8 @@ COPY --from=server /src/build/server/classes classes/server/
 COPY --from=server /src/lib/ lib/
 COPY --from=server /src/bloqqi-compiler/tools/beaver-rt.jar /src/bloqqi-compiler/tools/gson-2.6.2.jar lib/
 COPY --from=client /src/client/dist static/
+# Copied into an empty workspace on start (Main --examples).
+COPY --from=server /src/bloqqi-compiler/examples/ examples/
 # Test-only jars are not needed.
 RUN rm -f lib/junit-*.jar lib/hamcrest-*.jar
 
@@ -58,4 +64,5 @@ EXPOSE 8080
 # Not root by default; "docker run --user" gives the owner of the mounted folder.
 USER 1000:1000
 CMD ["java", "-cp", "/app/classes/server:/app/classes/compiler:/app/lib/*", \
-     "org.bloqqi.web.Main", "--port", "8080", "--workspace", "/workspace", "--static", "/app/static"]
+     "org.bloqqi.web.Main", "--port", "8080", "--workspace", "/workspace", "--static", "/app/static", \
+     "--examples", "/app/examples"]

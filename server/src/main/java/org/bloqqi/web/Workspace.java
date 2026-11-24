@@ -31,6 +31,46 @@ public final class Workspace {
 		return root;
 	}
 
+	/**
+	 * Fills an empty workspace with the examples that load without errors, so
+	 * that a first start shows something: when the folder does not exist, or has
+	 * no files other than hidden ones (such as {@code .gitkeep} or
+	 * {@code .DS_Store}). A folder with at least one file is left alone. Used by
+	 * {@code ant build}/{@code ant run} ({@link AddExamples}) and by the Docker
+	 * image ({@code Main --examples}).
+	 *
+	 * @return the names of the files copied (none if the workspace was not empty)
+	 */
+	public static List<String> addExamples(Path root, Path examples) throws IOException {
+		Files.createDirectories(root);
+		try (Stream<Path> paths = Files.list(root)) {
+			if (paths.anyMatch(p -> !p.getFileName().toString().startsWith("."))) {
+				return List.of();
+			}
+		}
+		List<Path> candidates;
+		try (Stream<Path> paths = Files.list(examples)) {
+			candidates = paths.filter(Files::isRegularFile)
+					.filter(p -> p.getFileName().toString().endsWith(".dia"))
+					.sorted()
+					.toList();
+		}
+		List<String> copied = new java.util.ArrayList<>();
+		for (Path example : candidates) {
+			String name = example.getFileName().toString();
+			String text = Files.readString(example, StandardCharsets.UTF_8);
+			LoadedFile file;
+			synchronized (BloqqiLoader.COMPILER_LOCK) {
+				file = BloqqiLoader.load(name, text);
+			}
+			if (file.isParsed() && file.syntaxErrors().isEmpty() && file.semanticErrors().isEmpty()) {
+				Files.writeString(root.resolve(name), text, StandardCharsets.UTF_8);
+				copied.add(name);
+			}
+		}
+		return copied;
+	}
+
 	/** Names of all Bloqqi files in the workspace, sorted. */
 	public List<String> files() throws IOException {
 		try (Stream<Path> paths = Files.list(root)) {

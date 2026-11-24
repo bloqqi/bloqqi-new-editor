@@ -10,5 +10,7 @@
 /client/test-results/
 /client/playwright-report/
 
-# Default workspace of "ant run" (a copy of the compiler examples that the editor writes to)
-/workspace/
+# Default workspace of "ant run" and compose.yaml: only the empty folder is in
+# git; its files are yours (an empty workspace gets the compiler's examples).
+/workspace/*
+!/workspace/.gitkeep

@@ -5,6 +5,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -98,6 +99,38 @@ public class WorkspaceTest {
 			} catch (IllegalArgumentException expected) {
 				// ok
 			}
+		}
+	}
+
+	/** The examples that load without errors (all but those Examples.EXCLUDED lists). */
+	private static List<String> loadableExamples() throws IOException {
+		try (var paths = Files.list(Examples.dir())) {
+			return paths.map(p -> p.getFileName().toString()).filter(n -> n.endsWith(".dia"))
+					.filter(n -> !Examples.EXCLUDED.contains(n)).sorted().toList();
+		}
+	}
+
+	@Test
+	public void anEmptyOrMissingWorkspaceGetsTheExamplesThatLoadCleanly() throws IOException {
+		Path missing = temp.getRoot().toPath().resolve("new");
+		List<String> added = Workspace.addExamples(missing, Examples.dir());
+		assertEquals(loadableExamples(), added);
+		assertEquals(added, new Workspace(missing).files());
+		assertEquals(Files.readString(Examples.dir().resolve("PLib.dia")), Files.readString(missing.resolve("PLib.dia")));
+
+		// Hidden files (the committed workspace/.gitkeep, .DS_Store) do not count.
+		Path hiddenOnly = temp.newFolder("hidden").toPath();
+		Files.writeString(hiddenOnly.resolve(".gitkeep"), "");
+		assertEquals(loadableExamples(), Workspace.addExamples(hiddenOnly, Examples.dir()));
+	}
+
+	@Test
+	public void aWorkspaceWithAnyFileIsLeftAlone() throws IOException {
+		Path dir = temp.newFolder("used").toPath();
+		Files.writeString(dir.resolve("notes.txt"), "mine");
+		assertEquals(List.of(), Workspace.addExamples(dir, Examples.dir()));
+		try (var paths = Files.list(dir)) {
+			assertEquals(List.of("notes.txt"), paths.map(p -> p.getFileName().toString()).toList());
 		}
 	}
 }
