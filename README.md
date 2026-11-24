@@ -40,7 +40,7 @@ appear immediately.
 The Bloqqi compiler is a git submodule, so clone with `--recursive`:
 
 ```sh
-git clone --recursive https://github.com/niklasfors/bloqqi-new-editor.git
+git clone --recursive https://github.com/bloqqi/bloqqi-new-editor.git
 cd bloqqi-new-editor
 ant build
 ```
