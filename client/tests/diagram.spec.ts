@@ -774,6 +774,33 @@ test.describe.serial('moving nodes', () => {
   });
 });
 
+test('connections touch parameter and variable boxes', async ({ page }) => {
+  await goto(page, '/?file=TwoCounters.dia&type=Acc');
+  // Each connection's first and last point, and the boxes of its two nodes, on screen.
+  const ends = await page.evaluate(() =>
+    [...document.querySelectorAll<SVGPathElement>('.react-flow__edge path.react-flow__edge-path')].map((path) => {
+      const edge = path.closest('.react-flow__edge')!.getAttribute('data-id')!;
+      const toScreen = (at: number) => {
+        const p = path.getPointAtLength(at).matrixTransform(path.getScreenCTM()!);
+        return { x: p.x, y: p.y };
+      };
+      return { edge, start: toScreen(0), end: toScreen(path.getTotalLength()) };
+    }),
+  );
+  const box = async (id: string) => (await node(page, id).boundingBox())!;
+  const near = (a: number, b: number) => expect(Math.abs(a - b)).toBeLessThan(1.5);
+  // in -> add.in1 starts at in's right side; add.out -> out ends at out's left
+  // side; state starts and ends on its box.
+  const inBox = await box('in');
+  const outBox = await box('out');
+  const stateBox = await box('state');
+  const byId = new Map(ends.map((e) => [e.edge, e]));
+  near(byId.get('in.out->add.in:in1')!.start.x, inBox.x + inBox.width);
+  near(byId.get('add.out:out->out.in')!.end.x, outBox.x);
+  near(byId.get('state.out->add.in:in2')!.start.x, stateBox.x + stateBox.width);
+  near(byId.get('add.out:out->state.in')!.end.x, stateBox.x);
+});
+
 test('the palette lists the types a block can be added of', async ({ page }) => {
   await goto(page, '/?file=TwoCounters.dia&type=Acc');
   const palette = page.getByTestId('palette');

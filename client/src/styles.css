@@ -390,16 +390,35 @@ body,
   inset: -4px;
 }
 
+/*
+ * The handle itself has no size and sits exactly on the box's edge, because
+ * React Flow ends a connection at the handle's outer side: an 8 px handle
+ * left a gap between the connection and the box. The circle is drawn around
+ * it by ::before (which also takes the pointer).
+ */
 .react-flow__handle.node-handle {
-  width: 8px;
-  height: 8px;
+  width: 0;
+  height: 0;
   min-width: 0;
   min-height: 0;
+  border: none;
+  background: none;
+  transform: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.react-flow__handle.node-handle::before {
+  content: '';
+  position: absolute;
+  box-sizing: border-box;
+  left: -4px;
+  top: -4px;
+  width: 8px;
+  height: 8px;
   border: 1px solid var(--port-local);
   border-radius: 50%;
   background: #ffffff;
-  opacity: 0;
-  pointer-events: none;
 }
 
 .react-flow__handle.node-handle.handle--free {
@@ -412,15 +431,26 @@ body,
   opacity: 1;
 }
 
-.react-flow__handle.handle--valid {
+.react-flow__handle.handle--valid,
+.react-flow__handle.node-handle.handle--valid::before {
   opacity: 1;
   background: var(--valid);
   border-color: var(--valid);
   box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.35);
 }
 
-.react-flow__handle.handle--from {
+.react-flow__handle.node-handle.handle--valid {
+  background: none;
+  box-shadow: none;
+}
+
+.react-flow__handle.handle--from,
+.react-flow__handle.node-handle.handle--from::before {
   box-shadow: 0 0 0 3px rgba(31, 79, 209, 0.35);
+}
+
+.react-flow__handle.node-handle.handle--from {
+  box-shadow: none;
 }
 
 /* Intercept mode (old editor: green ports fit, yellow ones do not). */
