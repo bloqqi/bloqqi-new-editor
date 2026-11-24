@@ -1340,6 +1340,25 @@ test.describe.serial('text view', () => {
     expect(c).toContain('void bloqqi_main(Main_VARS *vars)');
     expect(c).toContain('Acc_RES acc1 = Acc(1, &_state->acc1);');
     expect(c).not.toContain('int main()');
+    // The overview: the compiler's sections (two with shorter titles).
+    const overview = page.getByTestId('c-outline');
+    await expect(overview.getByRole('button')).toHaveText([
+      'Typedefs',
+      'Variable structs',
+      'Return value structs',
+      'Function declarations',
+      'Standard functions',
+      'Function definitions',
+    ]);
+    const item = (name: string) => overview.getByRole('button', { name, exact: true });
+    await item('Function definitions').click();
+    await expect(code).toContainText('Acc_RES Acc(Int in, Acc_STATE* _state) {');
+    await expect(item('Function definitions')).toHaveAttribute('aria-current', 'location');
+    await item('Variable structs').click();
+    await expect(code).toContainText('} Main_STATE;');
+    await expect(item('Variable structs')).toHaveAttribute('aria-current', 'location');
+    await expect(item('Function definitions')).not.toHaveAttribute('aria-current', 'location');
+
     // It is read-only: typing changes nothing, and says why.
     await expect(page.getByTestId('c-readonly')).toHaveText('Read-only');
     await code.click();

@@ -154,7 +154,10 @@
   compiler's own targets `--c=minimal` (default) or `--c` ("With driver").
   `generateC {file, variant}` is answered with `cCode {code | null,
   problems}` (RequestKind `query`); it is generated again when the file's text
-  changes. `CCodeTest` checks it equals the command line's output.
+  changes. `CCodeTest` checks it equals the command line's output. An
+  overview beside the code (`cOutline.ts`) lists the compiler's section
+  comments (two with shorter titles) and marks the section with the cursor,
+  or with the first visible line if the cursor is out of view.
   Note: the compiler's `--c` output does not compile with gcc 14 (`usleep`
   without a feature macro); `--c=minimal` does.
 - Local and single-user for now. Compiler access is serialised by one global

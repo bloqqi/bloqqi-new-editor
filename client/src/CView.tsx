@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
-import { EditorState } from '@codemirror/state';
+import { EditorSelection, EditorState } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers } from '@codemirror/view';
 import { c } from './cLanguage';
+import { cOutline, type OutlineSection } from './cOutline';
 import type { CCodeMessage, ClientMessage, CVariant } from './protocol';
 import type { Answer } from './useServer';
 
@@ -51,6 +52,22 @@ export function CView({
   }, [file, text, variant, request]);
 
   const code = result?.code ?? null;
+  const outline = useMemo(() => (code === null ? [] : cOutline(code)), [code]);
+  const [editor, setEditor] = useState<EditorView | null>(null);
+  /** The line the overview marks: see CodeEditor's onLine. */
+  const [line, setLine] = useState(1);
+  /** Shows a line of the code at the top (as far as it scrolls), with the cursor on it. */
+  const goTo = useCallback(
+    (line: number) => {
+      if (!editor) return;
+      const at = editor.state.doc.line(Math.min(line, editor.state.doc.lines)).from;
+      editor.dispatch({
+        selection: EditorSelection.cursor(at),
+        effects: EditorView.scrollIntoView(at, { y: 'start', yMargin: 0 }),
+      });
+    },
+    [editor],
+  );
   const copy = async () => {
     if (code === null) return;
     try {
@@ -109,9 +126,51 @@ export function CView({
           </ul>
         </section>
       ) : (
-        <CodeEditor code={code} onEditAttempt={showEditHint} />
+        <div className="c-view__body">
+          <Overview sections={outline} line={line} onGoTo={goTo} />
+          <CodeEditor code={code} onEditAttempt={showEditHint} onView={setEditor} onLine={setLine} />
+        </div>
       )}
     </div>
+  );
+}
+
+/**
+ * The overview of the code: its sections (from the compiler's comments on
+ * lines of their own). A click shows that section; the one being looked at is
+ * marked.
+ */
+function Overview({
+  sections,
+  line,
+  onGoTo,
+}: {
+  sections: OutlineSection[];
+  /** The line whose section is marked. */
+  line: number;
+  onGoTo: (line: number) => void;
+}) {
+  // The section being looked at: the last one starting at or before the line.
+  const current = [...sections].reverse().find((s) => s.line <= line);
+  return (
+    <nav className="c-view__outline" aria-label="Overview" data-testid="c-outline">
+      <h2 className="c-view__outline-title">Overview</h2>
+      <ul>
+        {sections.map((s) => (
+          <li key={`${s.line}:${s.title}`}>
+            <button
+              type="button"
+              className="c-view__item"
+              title={s.comment}
+              aria-current={s === current ? 'location' : undefined}
+              onClick={() => onGoTo(s.line)}
+            >
+              {s.title}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </nav>
   );
 }
 
@@ -119,11 +178,36 @@ export function CView({
  * Read-only, highlighted code: it can be selected, searched and copied; an
  * attempt to type, paste or drop text is reported (`onEditAttempt`).
  */
-function CodeEditor({ code, onEditAttempt }: { code: string; onEditAttempt: () => void }) {
+function CodeEditor({
+  code,
+  onEditAttempt,
+  onView,
+  onLine,
+}: {
+  code: string;
+  onEditAttempt: () => void;
+  /** The editor, once created (null when it is gone): the overview scrolls it. */
+  onView: (view: EditorView | null) => void;
+  /**
+   * The (1-based) line being looked at: the cursor's, while it is visible (a
+   * click in the code or in the overview puts it there), otherwise the first
+   * visible line.
+   */
+  onLine: (line: number) => void;
+}) {
   const editAttempt = useRef(onEditAttempt);
   editAttempt.current = onEditAttempt;
+  const reportLine = useRef(onLine);
+  reportLine.current = onLine;
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
+  const report = (v: EditorView) => {
+    const scroller = v.scrollDOM;
+    const top = v.lineBlockAtHeight(scroller.scrollTop + 2).from;
+    const bottom = v.lineBlockAtHeight(scroller.scrollTop + scroller.clientHeight - 2).to;
+    const head = v.state.selection.main.head;
+    reportLine.current(v.state.doc.lineAt(head >= top && head <= bottom ? head : top).number);
+  };
   useEffect(() => {
     const v = new EditorView({
       parent: host.current!,
@@ -142,6 +226,9 @@ function CodeEditor({ code, onEditAttempt }: { code: string; onEditAttempt: () =
             drop: () => editAttempt.current(),
           }),
           EditorState.tabSize.of(2),
+          EditorView.updateListener.of((u) => {
+            if (u.selectionSet || u.docChanged || u.geometryChanged) report(u.view);
+          }),
           EditorView.contentAttributes.of({
             'aria-label': 'Generated C code (read-only)',
             'aria-readonly': 'true',
@@ -151,7 +238,13 @@ function CodeEditor({ code, onEditAttempt }: { code: string; onEditAttempt: () =
       }),
     });
     view.current = v;
+    const onScroll = () => report(v);
+    v.scrollDOM.addEventListener('scroll', onScroll);
+    report(v);
+    onView(v);
     return () => {
+      v.scrollDOM.removeEventListener('scroll', onScroll);
+      onView(null);
       v.destroy();
       view.current = null;
     };

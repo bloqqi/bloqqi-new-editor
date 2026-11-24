@@ -237,6 +237,66 @@ body,
   letter-spacing: 0.04em;
 }
 
+/* The overview of the generated code, beside it. */
+.c-view__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.c-view__outline {
+  flex: none;
+  width: 180px;
+  overflow: auto;
+  padding: 6px 0;
+  border-right: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.c-view__outline-title {
+  margin: 0 12px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.c-view__outline ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.c-view__item {
+  display: block;
+  width: calc(100% - 12px);
+  margin: 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 3px;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.c-view__item:hover {
+  background: #eef2fd;
+}
+
+.c-view__item[aria-current] {
+  background: #dfe7fb;
+  font-weight: 600;
+}
+
+.c-view__code {
+  flex: 1;
+  min-width: 0;
+}
+
 /* Generated code: a light grey page, unlike the editable text view. */
 .c-view__code .cm-editor,
 .c-view__code .cm-gutters {
