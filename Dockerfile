@@ -22,10 +22,13 @@ RUN curl -fsSL -o /tmp/ant.tar.gz \
 ENV PATH="/opt/apache-ant-${ANT_VERSION}/bin:${PATH}"
 
 WORKDIR /src
+# The pinned jars (from Maven Central, SHA-1 verified) in their own layer: it
+# depends only on build.xml, so changes to the sources don't download them again.
 COPY build.xml ./
+RUN ant deps
 COPY bloqqi-compiler/ bloqqi-compiler/
 COPY server/ server/
-# Downloads the pinned jars, builds the compiler (its "gen" target only) and the server.
+# Builds the compiler (its "gen" target only) and the server.
 RUN test -f bloqqi-compiler/build.xml \
         || (echo "bloqqi-compiler/ is empty: clone with --recursive, or run git submodule update --init" && exit 1) \
     && ant server

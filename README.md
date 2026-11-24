@@ -106,6 +106,14 @@ To start with the compiler's example files, copy them into the folder first:
 cp bloqqi-compiler/examples/*.dia workspace/
 ```
 
+The image contains the built editor, so to update it, rebuild it and start a
+new container (the files in `workspace/` are not affected):
+
+```sh
+git pull && git submodule update --init
+docker build -t bloqqi-editor .
+```
+
 ## Develop
 
 - `ant test` runs the server tests (JUnit).

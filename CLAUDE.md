@@ -187,7 +187,8 @@ run `ant test e2e`, then commit the submodule pointer.
 - Docker: `docker build -t bloqqi-editor .`, then `mkdir -p workspace` and
   `docker run --rm -p 127.0.0.1:8080:8080 -v "$PWD/workspace:/workspace"
   --user "$(id -u):$(id -g)" bloqqi-editor` (README). The `Dockerfile` builds the server with Ant and the
-  client with npm in separate stages (base images and Ant pinned); the runtime
+  client with npm in separate stages (base images and Ant pinned; `ant deps`
+  has its own layer, depending only on `build.xml`); the runtime
   is a JRE with the classes, `lib/*.jar` and `client/dist`. There is no Docker
   in this dev environment; the image was tried on the user's machine
   (2026-11-24) and works.
