@@ -1,6 +1,12 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-import { bracketMatching, defaultHighlightStyle, indentOnInput, syntaxHighlighting } from '@codemirror/language';
+import {
+  bracketMatching,
+  defaultHighlightStyle,
+  foldKeymap,
+  indentOnInput,
+  syntaxHighlighting,
+} from '@codemirror/language';
 import { lintGutter, setDiagnostics, type Diagnostic } from '@codemirror/lint';
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import { Annotation, Compartment, EditorSelection, EditorState, Transaction, type Text } from '@codemirror/state';
@@ -12,6 +18,7 @@ import {
   keymap,
   lineNumbers,
 } from '@codemirror/view';
+import { annotationFolding, foldAnnotations, unfoldAt } from './annotationFolding';
 import { bloqqi, bloqqiHighlighting } from './bloqqiLanguage';
 import type { ClientMessage, Problem } from './protocol';
 import { IS_MAC } from './shortcuts';
@@ -116,6 +123,7 @@ export const TextView = forwardRef<
         selection: EditorSelection.cursor(head),
         annotations: [fromServer.of(true), Transaction.addToHistory.of(false)],
       });
+      foldAnnotations(v);
       base.current = newText;
       markDirty(false);
       setConflict(null);
@@ -157,6 +165,7 @@ export const TextView = forwardRef<
           lineNumbers(),
           highlightActiveLineGutter(),
           lintGutter(),
+          annotationFolding,
           history(),
           drawSelection(),
           indentOnInput(),
@@ -168,7 +177,7 @@ export const TextView = forwardRef<
           syntaxHighlighting(defaultHighlightStyle),
           EditorState.tabSize.of(2),
           // (⌘S/Ctrl+S is handled for the whole window, below.)
-          keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+          keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap, ...searchKeymap, ...foldKeymap]),
           editability.current.of(EditorView.editable.of(true)),
           EditorView.updateListener.of((update) => {
             if (!update.docChanged || update.transactions.some((t) => t.annotation(fromServer))) return;
@@ -184,6 +193,7 @@ export const TextView = forwardRef<
       }),
     });
     view.current = v;
+    foldAnnotations(v);
     v.dispatch(setDiagnostics(v.state, toDiagnostics(v.state.doc, latest.current.savedProblems)));
     return () => {
       window.clearTimeout(checkTimer.current);
@@ -253,6 +263,7 @@ export const TextView = forwardRef<
     const v = view.current;
     if (!v) return;
     const [d] = toDiagnostics(v.state.doc, [p]);
+    unfoldAt(v, d.from);
     v.dispatch({
       selection: EditorSelection.range(d.from, d.to),
       scrollIntoView: true,

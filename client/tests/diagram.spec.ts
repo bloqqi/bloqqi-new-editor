@@ -1177,6 +1177,10 @@ test.describe.serial('text view', () => {
   test("annotation blocks' contents are greyed out; highlighting resumes after them", async ({ page }) => {
     await page.goto('/?file=PLib.dia&type=PTrack&view=text');
     await expect(editor(page)).toContainText('diagramtype PTrack');
+    // Unfold them all (Ctrl+Alt+]); see the next test.
+    await editor(page).click();
+    await page.keyboard.press('Control+Alt+BracketRight');
+    await expect(page.locator('.cm-foldPlaceholder')).toHaveCount(0);
     /** The colour of `text` in the first line that starts with `line`. */
     const color = (line: string, text: string) =>
       page.evaluate(
@@ -1200,6 +1204,49 @@ test.describe.serial('text view', () => {
     await expect.poll(() => color('P::K', 'P::K')).toBe(grey);
     await expect.poll(() => color('P::K', '20')).toBe(grey); // not a green number
     await expect.poll(() => color('features P', 'features')).toBe(keyword); // after the block
+  });
+
+  test('annotation blocks are folded; the … or the arrow in the gutter unfolds them', async ({ page }) => {
+    await page.goto('/?file=PLib.dia&type=PTrack&view=text');
+    await expect(editor(page)).toContainText('diagramtype PTrack');
+    const layout = 'SelReal_1 = (298, 10, 44, 46)';
+    await expect(editor(page)).not.toContainText(layout);
+
+    /** PTrack's annotation line (the first one after its declaration): its … (or -1) and its middle. */
+    const annotationLine = () =>
+      page.evaluate(() => {
+        const lines = [...document.querySelectorAll('.cm-line')];
+        const decl = lines.findIndex((l) => l.textContent!.startsWith('diagramtype PTrack'));
+        const line = lines.slice(decl).find((l) => l.textContent!.startsWith('annotation('))!;
+        const r = line.getBoundingClientRect();
+        const placeholders = [...document.querySelectorAll('.cm-foldPlaceholder')];
+        return { placeholder: placeholders.indexOf(line.querySelector('.cm-foldPlaceholder')!), y: r.top + r.height / 2 };
+      });
+    const clickArrow = async () => {
+      const gutter = (await page.locator('.cm-foldGutter').boundingBox())!;
+      await page.mouse.click(gutter.x + gutter.width / 2, (await annotationLine()).y);
+    };
+
+    // A plain grey …, which looks like a button only under the mouse.
+    const dots = page.locator('.cm-foldPlaceholder').nth((await annotationLine()).placeholder);
+    await expect(dots).toHaveText('…');
+    await expect(dots).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await dots.hover();
+    await expect(dots).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    // One click unfolds it, also when the button is held a moment (as by a
+    // person; the editor used to redraw the … in between, losing the click).
+    await page.mouse.down();
+    await page.waitForTimeout(150);
+    await page.mouse.up();
+    await expect(editor(page)).toContainText(layout);
+
+    // The arrow folds and unfolds it too.
+    await clickArrow();
+    await expect(editor(page)).not.toContainText(layout);
+    await clickArrow();
+    await expect(editor(page)).toContainText(layout);
+    // Folding changes only what is shown.
+    await expect(page.getByTestId('text-state')).toHaveText('Saved');
   });
 
   test('a file with errors can be saved; its diagram is then read-only', async ({ page }) => {

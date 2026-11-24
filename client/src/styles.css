@@ -188,6 +188,29 @@ body,
   line-height: 1.5;
 }
 
+/* A folded annotation block (the diagram's layout): a plain grey …, which
+   looks clickable (and unfolds the block) only under the mouse. */
+.text-view__editor .cm-foldPlaceholder {
+  color: #9a9aa0;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 0 2px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.text-view__editor .cm-foldPlaceholder:hover {
+  color: var(--text);
+  background: #f0f0f3;
+  border-color: #c8c8d0;
+}
+
+.text-view__editor .cm-foldGutter span {
+  color: #9a9aa0;
+  cursor: pointer;
+}
+
 .text-view__problems {
   max-height: 25%;
   overflow: auto;

@@ -130,7 +130,9 @@
   refuses and the client clears that file's history.
 - Text view (toolbar "Diagram | Text", `?view=text`; `TextView.tsx`, loaded
   lazily with CodeMirror 6, pinned `@codemirror/*`; highlighting in
-  `bloqqiLanguage.ts` from the scanner's keywords): the whole file, saved
+  `bloqqiLanguage.ts` from the scanner's keywords; the contents of
+  `annotation(...)` blocks are grey, and the blocks are folded whenever a text
+  is loaded, `annotationFolding.ts`): the whole file, saved
   explicitly (⌘S/Ctrl+S or Save). Every diagram message carries the file's
   `text`. Typing sends `checkText` (debounced; answered with `problems`,
   nothing written; RequestKind `check`, not counted as pending). Save sends
