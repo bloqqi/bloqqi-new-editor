@@ -526,15 +526,9 @@ body,
 }
 
 /*
- * React Flow gives connections that cannot be selected (inherited ones, or
- * all in a read-only file) pointer-events: none, which would also swallow
- * their right-click menu (Intercept…). Clicking them still selects nothing.
+ * Connections can be selected to see them highlighted; Delete (and the ×)
+ * removes only those declared in the shown type, not inherited ones.
  */
-.react-flow__edge.inactive {
-  pointer-events: visibleStroke;
-}
-
-/* Selected (deletable) connections and literals; Delete removes them. */
 .react-flow__edge.selectable {
   cursor: pointer;
 }

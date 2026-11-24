@@ -1018,8 +1018,7 @@ test('an inherited connection can be intercepted in a subtype', async ({ page })
   await expect(inherited).toHaveCount(1);
   expect(text()).not.toContain('intercept Out with SelReal_1.in2'); // (PI and PD intercept too)
 
-  // A local connection cannot be intercepted (real right-clicks: an inherited
-  // connection is not selectable, but its menu must still open).
+  // A local connection cannot be intercepted (real right-clicks).
   await rightClickConnection(page, 'Track', 'out');
   await expect(page.getByRole('menuitem', { name: 'Intercept', exact: true })).toBeDisabled();
   await expect(page.getByRole('menuitem', { name: 'Intercept', exact: true })).toHaveAttribute(
@@ -1055,14 +1054,27 @@ test('an inherited connection can be intercepted in a subtype', async ({ page })
   expect(text()).toContain('intercept Out with SelReal_1.in2, SelReal_1.out;');
 });
 
-test('inherited connections cannot be selected', async ({ page }) => {
+test('inherited connections can be selected (highlighted) but not deleted', async ({ page }) => {
   await goto(page, '/?file=PLib.dia&type=PTrack');
+  const before = readWorkspaceFile('PLib.dia');
   const inherited = edge(page, 'P::e.out:out->P::PPart.in:in1');
-  await expect(inherited).not.toHaveClass(/selectable/);
-  // Clicking it selects nothing, so no × appears.
   await inherited.click({ force: true });
+  await expect(inherited).toHaveClass(/selected/);
+  await expect(inherited.locator('.flow__halo')).toHaveCount(1);
+  // No ×, and Delete does nothing.
   await expect(page.getByRole('button', { name: 'Delete connection', exact: true })).toHaveCount(0);
-  await expect(edge(page, 'Track.out->SelReal_1.in:sel')).toHaveClass(/selectable/);
+  await page.keyboard.press('Delete');
+  await page.waitForTimeout(300);
+  await expect(inherited).toHaveCount(1);
+  await expect(page.getByTestId('undo')).toBeDisabled();
+  expect(readWorkspaceFile('PLib.dia')).toBe(before);
+
+  // A local connection gets the ×.
+  const local = edge(page, 'Track.out->SelReal_1.in:sel');
+  await local.click({ force: true });
+  await expect(local).toHaveClass(/selected/);
+  await expect(inherited).not.toHaveClass(/selected/);
+  await expect(page.getByRole('button', { name: 'Delete connection', exact: true })).toHaveCount(1);
 });
 
 test('files with syntax errors are read-only', async ({ page }) => {

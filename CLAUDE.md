@@ -110,9 +110,10 @@
   free input, S an output. The compiler matches X by its fully qualified name
   and checks the types. As in the old editor (InterceptTool), the client
   enters a mode: click a block input port, then a block output port (green
-  ports fit, yellow ones do not; Esc cancels; `InterceptMode.tsx`). React Flow makes unselectable edges `inactive`
-  (`pointer-events: none`); `styles.css` turns that off so inherited
-  connections still get their menu.
+  ports fit, yellow ones do not; Esc cancels; `InterceptMode.tsx`). All
+  connections are selectable, so inherited ones can be highlighted (and get
+  their menu; React Flow gives unselectable edges `pointer-events: none`);
+  Delete and the × only remove `deletable` ones.
 - Client: lists of types and files are shown sorted by name (`names.ts`:
   case-insensitive, numbers by value); the server sends them in file order.
   A type's super types keep their written order, since it matters.

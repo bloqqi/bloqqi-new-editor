@@ -102,12 +102,15 @@ export function moveLiterals(nodes: DiagramFlowNode[], targets: Map<string, stri
   });
 }
 
-/** React Flow edges for a diagram; only connections that can be deleted here are selectable. */
+/**
+ * React Flow edges for a diagram. Every connection can be selected (to see it
+ * highlighted), but only those declared here can be deleted (see onDelete).
+ */
 export function toFlowEdges(diagram: DiagramMessage | null): FlowEdgeType[] {
   return (diagram?.edges ?? []).map((e) => ({
     id: e.id,
     type: 'flow',
-    selectable: e.deletable && !diagram?.readOnly,
+    deletable: e.deletable && !diagram?.readOnly,
     source: e.source,
     sourceHandle: e.sourceHandle,
     target: e.target,
