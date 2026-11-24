@@ -55,7 +55,8 @@ repository. Its behaviour was recovered with `javap` (§3.9).
   plus the standard library (`Program.loadStandardLibrary()`). Other files and
   `import` declarations are not loaded, so the editor sees only types from the
   open file and the standard library. Everything uses
-  `program.getCompilationUnit(0)`.
+  `program.getCompilationUnit(0)`, except the palette, which loops over all
+  compilation units (in practice the same single one).
 * The canvas shows **one `DiagramType` at a time**. Initially this is the first
   diagram type in the file; if there is none, the user is prompted for a name
   (default `Main`) and one is created. Another type can be opened from the
@@ -94,10 +95,11 @@ children, in this order (`DiagramTypePart.getModelChildren`):
 4. `dt.literals()`: `java.util.List<Literal>`
 5. `dt.variables()`: `List<InheritedVariable>`
 
-Connections are not children. Each node part reports its connections through
-`Anchor.outgoingConnections()` and `Anchor.ingoingConnections()` (collection
-attributes in `frontend/Anchor.jrag`, rooted at `DiagramType`). These collect
-over the NTA `connections()`.
+Connections are not children. The parameter, variable, literal and port parts
+report their connections through `Anchor.outgoingConnections()` and
+`Anchor.ingoingConnections()` (collection attributes in `frontend/Anchor.jrag`,
+rooted at `DiagramType`). These collect over the NTA `connections()`. A
+block's connections hang off its port parts; `BlockPart` reports none itself.
 
 ### 2.1 Identity: `accessString`
 
@@ -106,8 +108,12 @@ Every node has a string key, `Node.accessString()` (`graphical-editor/Access.jra
 * a local node is keyed by its `name()`, for example `Sub_1` or `SP`
 * an inherited node is keyed by `declaredInDiagramType().name() + "::" + name()`, for example `P::Out`
   (`ASTNode.DECLARED_IN_SEP = "::"`)
-* an inlined node is keyed by its inlined name, joined with `$`
+* an inlined block is keyed by its full `name()`, joined with `$`
   (`ASTNode.INLINE_SEP = "$"`), for example `loop$master$controller`
+  (`Node.inlinedName()` is only the last segment, `controller`). An inlined
+  block does not count as inherited (`eq InlinedBlock.isInherited() = false`).
+  An inlined *variable* does: it is declared in the inner type, so its key
+  gets that prefix, for example `Inner::i$v`
 
 These keys identify nodes in the layout table and in `annotation(...)`. They
 are the natural candidate for stable IDs in the new client/server protocol.
@@ -116,14 +122,14 @@ are the natural candidate for stable IDs in the new client/server protocol.
 
 | Element | AST node(s) | Key attributes used | Visual encoding (old editor) |
 |---|---|---|---|
-| **Diagram (canvas)** | `DiagramType` (or `AnonymousDiagramType` when opened from the outline) | the NTA lists above | Freeform layer with a 1 px border, background RGB(240,240,240), zoomable |
+| **Diagram (canvas)** | `DiagramType` (or `AnonymousDiagramType` when opened from the outline or with *Open Declaration*) | the NTA lists above | Freeform layer with a 1 px border on a viewer with background RGB(240,240,240), zoomable |
 | **In-parameter** | `InheritedInParameter` (NTA wrapper; `getDeclaredInParameter()` is the real decl) | `isInherited()` (`= declaredInDiagramType() != diagramType()`), `name()`, `outgoingConnections()`/`ingoingConnections()` | Rectangle plus right-pointing triangle; label = name. Local: blue outline, white fill, dark-blue marker. Inherited: dashed black outline, grey fill RGB(220,220,220). Connection anchor on the right edge. |
-| **Out-parameter** | `InheritedOutParameter` | same as above | As for in-parameters, but with a thin bar on the left; anchor on the left edge |
+| **Out-parameter** | `InheritedOutParameter` | same as above | As for in-parameters (outlined triangle), but instead of the in-parameter's small filled marker a 3 px bar on the left (dark blue when local, black when inherited); anchor on the left edge |
 | **Block** | `InheritedBlock` (wraps `getDeclaredBlock()`), `InlinedBlock` (subclass) | see the block flags below | Rounded rectangle; label = name (or `Type` for simple names, see below); with *Show types* on, `name:Type` |
 | **Port** | `Port` (NTA `Block.getInPortList()` and `getOutPortList()`, created from the block type's parameters by `TypeDecl.createInPortList()`) | `index()`, `isInParameter()`, `type()`, `canAccess()`, `canModifyToAccess()`, `declaredParameter()` | 6×6 square on the left (in) or right (out) edge, at `y = 5 + index·14`. Dark blue if the block is deletable, black otherwise. Hover shows a tooltip `name: Type`. |
 | **Variable** | `InheritedVariable`, `InlinedVariable` | `prettyPrintKind()` (`var`/`input`/`output`), `inlinedName()`, `type()`, `isInherited()`, `isInlined()` | Rectangle with label `kind name` (`kind name:Type` with *Show types*). Inherited or inlined: dashed black, grey or white fill. Centre (chopbox) anchor. |
 | **Literal** | `Literal` (source of a `Connection`) | `enclosingConnection()`, `toString()` | Plain text label placed just left of the target node, vertically aligned to the target port. **Not stored in the layout.** |
-| **Connection** | `InheritedConnection` and subclasses (see §2.4) | `canDelete()`, `isIntercept()`, `hasErrors()`, `isOnDataflowCycle()`, `getIsFirstConnection()` | Manhattan-routed polyline with an arrow head (none if the source is a literal). Local: blue solid. Inherited or not deletable: black dashed. Errors: red, width 2. |
+| **Connection** | `InheritedConnection` and subclasses (see §2.4) | `canDelete()`, `isIntercept()`, `hasErrors()`, `isOnDataflowCycle()`, `getIsFirstConnection()` | Manhattan-routed polyline with an arrow head (none if the source is a literal). Local: blue solid. Errors (`hasErrors()` or `isOnDataflowCycle()`): red, width 2. Inherited or not deletable: black dashed, which overrides the red, so an inherited connection with errors is not marked. |
 
 **Block flags** (`BlockPart.refreshVisuals` / `BlockFigure`):
 
@@ -135,14 +141,16 @@ are the natural candidate for stable IDs in the new client/server protocol.
 | locally redeclared | `Block.isLocallyRedeclared()` (`frontend/Redeclare.jrag`) | grey inner rectangle over the top half of the block |
 | error | `Block.isOnTypeCycle()` (`TypeAnalysis.jrag`) or `Block.isDataflowCircular()` (`Node.jrag`) | red border and red text |
 | label | `Modifiers.isOnSimpleNameForm()` (`Modifiers.jrag`): `block.type().name()`. Otherwise `Node.inlinedName()`, prefixed with `declaredInDiagramType().name()+"::"` when `Node.isNameAmbiguous()` | |
-| size | the stored rectangle; the figure is widened by 6 px on each side for the ports. Minimum height: `max(20, 10 + n·6 + (n−1)·8)` for `n = max(#in, #out)` | |
+| size | the stored rectangle; the figure is widened by 6 px on each side for the ports. Resizing only keeps the height at least 20 (`ChangeConstraintBlockCommand`). A new block gets height `max(20, n·14)` (`BlockFigure.computeMinBlockSize`); auto-layout uses `max(20, 10 + n·6 + (n−1)·8)` (`PortPart.computeNodeMinHeight`), with `n = max(#in, #out)` | |
 
 ### 2.3 Inheritance and redeclaration
 
 * Inheritance is flattened by the NTA lists. For every
   `superType ∈ dt.superTypesLinearized()`, the lists wrap the super type's
   *local* elements (`createInheritedInParameter`, `createInheritedBlocks`,
-  `createInheritedConnection`, …). `superTypesLinearized()` is a
+  `createInheritedConnection`, …). For blocks, only the most specific
+  (redeclared) block of each name is wrapped
+  (`DiagramType.declaredBlocksTransitive()`). `superTypesLinearized()` is a
   `LinkedHashSet`, with super types first and `dt` last. Inherited elements are
   therefore drawn alongside local ones and only styled differently. They cannot
   be deleted or renamed.
@@ -178,9 +186,12 @@ in three passes. The old editor reflects each pass visually:
      itself) is replaced by `S → Y` (second).
    * Drawing (`ConnectionPart`, `SplitPolylineConnection`): the half that
      belongs to the original, inherited connection is dashed black. The new
-     half is solid blue. A small rectangle marks the midpoint; it is large for
-     the "far" side of a source interception and for the first half of a
-     connection interception.
+     half is solid blue. A small rectangle marks the midpoint; it is large
+     (8×4 instead of 7×2) on the connection that touches the intercepted X:
+     the second connection `S → X` of a connection interception, and the first
+     connection `X → T` of a source interception. This split drawing is only
+     used when the interception is declared in the shown type (deletable); the
+     halves of an inherited interception are drawn wholly dashed black.
    * Both halves have `getDeclaredFlowDecl()` set to the `Interception`, so
      deleting either half deletes the interception (§3.4).
    * Example: in `PLib.dia`, `PTrack extends P` contains
@@ -220,9 +231,10 @@ in three passes. The old editor reflects each pass visually:
 ### 2.6 What is not drawn
 
 The following are not drawn: `annotation(...)`, `wiring` declarations,
-`recommendation` and `features` declarations, structs, external functions,
-functions, state machines (these four only appear as palette entries), doc
-strings (shown as the palette tooltip), and diagram-type modifiers (`abstract`).
+`recommendation` and `features` declarations, structs (not even in the
+palette), external functions, functions and state machines (these three only
+appear as palette entries), doc strings (shown as the palette tooltip), and
+diagram-type modifiers (`abstract`).
 
 ---
 
@@ -248,9 +260,11 @@ The palette is rebuilt every time another diagram type is shown.
   accessible port is coloured. A port counts as accessible when
   `Anchor.canAccess() || Anchor.canModifyToAccess()`. Green means valid:
   type-compatible with the start anchor (`TypeDecl.compatibleWith`) **and**
-  without incoming connections. Yellow means anything else. Before the first
-  click, out-ports are highlighted. After it, in-ports are highlighted if the
-  start was a source, otherwise out-ports. **This is only feedback.** The
+  without incoming connections. Yellow means anything else. The tool means to
+  highlight out-ports before the first click, but nothing is highlighted then:
+  `ConnectionCreationToolFeedback.activate()` creates its `PortsFeedback` with a
+  root edit part that is never set (`null`). Once the connection has started,
+  in-ports are highlighted if the start was a source, otherwise out-ports. **This is only feedback.** The
   command does not reject incompatible types or a second driver; those show up
   afterwards as red connections or errors.
 * **Edit policy** (`NodeGraphicalNodeEditPolicy`, installed on ports,
@@ -271,7 +285,14 @@ The palette is rebuilt every time another diagram type is shown.
      (`Block.addAnonymousTypesForNestedBlocks`), then adds a new parameter to
      each enclosing anonymous type and a connection from it
      (`ASTNode.addConnectionsParameters`), and returns
-     `Pair<newBlock, VarUse>`. Only one end may need this rewrite.
+     `Pair<newBlock, VarUse>`. Before that, `Port.access()` tries
+     `accessInlinedBlock()`: if the inner port has exactly one connection to a
+     parameter of the inlined type, the end becomes
+     `DotVarUse(SimpleVarUse(outerBlock), param)`. The rewrite applies only to
+     an inlined block declared in this type, and for an in-port only if it has
+     no incoming connection. Only one end may need the rewrite; if both do,
+     the command fails, but the first end's rewrite has already been made and,
+     since a failed command is not on the undo stack (§3.9), cannot be undone.
   4. `dt.addFlowDecl(new Connection(src, tgt))`.
 * Undo removes the connection and restores the original block if it was
   rewritten.
@@ -285,7 +306,7 @@ or `STRING_LITERAL` token. Then `CreateLiteralCommand` adds
 `connect(<literal>, <target access>)`. A literal that does not parse gives an
 info dialog. Literals have no position of their own.
 
-### 3.4 Delete (selection + Delete key/toolbar/context menu)
+### 3.4 Delete (selection + Delete key/context menu; not on the toolbar, see §3.7)
 
 GEF `DeleteAction` works on a multi-selection; each edit part's policy supplies
 the command:
@@ -298,8 +319,9 @@ the command:
 | Connection | `ConnectionEditPolicy` → `DeleteConnectionCommand` | `Connection.canDelete()` | removes `getDeclaredFlowDecl()`. For an intercept half this removes the whole `intercept` statement. |
 | Literal | `LiteralComponentEditPolicy` → `DeleteLiteralCommand` | enclosing connection not inherited | removes the enclosing connection |
 
-Undo restores a tree copy of the old `FlowDeclList` and re-inserts the
-declaration at its old index. The layout entry is **not** removed on delete;
+Undo of a block, parameter or variable restores a tree copy of the old
+`FlowDeclList` and re-inserts the declaration at its old index. Undo of a
+connection or literal only re-inserts the removed flow decl at its old index. The layout entry is **not** removed on delete;
 stale keys are dropped when saving (§6.3).
 
 ### 3.5 Create parameter / variable / block
@@ -322,6 +344,10 @@ stale keys are dropped when saving (§6.3).
      the specialisation wizard (§4.2) yields
      `FeatureConfiguration.newAnonymousBlock(name)` plus a set of inner
      parameters to expose.
+     Answering "No" to either question goes straight to step 3's name dialog
+     (the dialogs: "Feature selection" / *Type "T" has features. Do you want
+     to select features?*, and "Specialize type" / *Type "T" can be
+     specialized. Do you want to specialize it?*).
   3. Otherwise, for diagram types and state machines, if the preference
      *Always ask for block name* is on (default **on**), a name dialog
      pre-filled with `Type_N` (the first unused N) appears. If the name is
@@ -354,8 +380,8 @@ Items appear only when enabled (`ContextMenu.buildContextMenu`):
 | **Intercept source port** | same | as above with `SourceInterceptCommand` → `intercept source <conn.source.access()> with T, S;` |
 | Layout ▸ Show/hide types, Change all connection routers, Change connection router | preference *Show layout operations in context menu* (default off) | View only: the router toggles between Manhattan and straight lines and is **not persisted**. |
 | **Open Declaration (T)** | one block selected whose `type()` is a diagram type | shows that type on the canvas (no back navigation) |
-| **Inline / Collapse** | one block selected. Inline: `type().isDiagramType() && !isInherited()`. Collapse: block `isInlined()` and `inlinedBlock().declaredInDiagramType() == dt` | `SetBlockInlineCommand` toggles the `inline` modifier on the declared block (`Modifiers.setModifier("inline", …)`). On inline, positions are computed for the new inlined nodes by running KLay on the block's type, offset by (−50, −30) from the block. On collapse, the block gets the position of its inlined child closest to the origin. |
-| **Rename…** | one local block, parameter or variable | §3.8 |
+| **Inline / Collapse** | one block selected. Inline: `type().isDiagramType() && !isInherited()`. Collapse: block `isInlined()` and `inlinedBlock().declaredInDiagramType() == dt` | `SetBlockInlineCommand` toggles the `inline` modifier on the declared block (`Modifiers.setModifier("inline", …)`). On inline, positions are computed by running KLay on the block's type, offset by (−50, −30) from the block, for the new inlined blocks that have no stored position (variables are not placed). On collapse, a block without a stored position gets that of its inlined child closest to the origin, with the size from `BlockFigure.computeMinBlockSize`. |
+| **Rename…** | one block, parameter or variable that is not inherited (`!isInherited()`, so also an inlined block, which then renames the block declared in the inlined type) | §3.8 |
 | **Change specialization…** | one local block with an anonymous type whose first direct super type `hasRecommendations()` | §4.2 (`ChangeBlockSpecializationCommand`) |
 | **Change features…** | one local block with an anonymous type whose first direct super type has `featureDecls()` | §4.1 (`ChangeFeaturesBlockCommand`) |
 | **Delete** | see §3.4 | |
@@ -386,13 +412,19 @@ Keyboard: the standard Eclipse bindings for undo, redo and delete.
 * Rename runs as a `PostConditionCommand`: if `changeName` returns false, an
   info dialog "Could not change name to …" appears and the command is not put
   on the undo stack.
+* The new name is not validated: `RenameAction` passes the dialog's text as
+  it is (not trimmed, no `Program.isIdValid`), and `changeName` only checks
+  `lookup(newName) != null`. Renaming to the current name fails, because the
+  lookup finds the element itself.
 
 ### 3.9 Command stack
 
 `PostConditionCommandStack` (binary only) is a copy of GEF's `CommandStack`.
-After `execute()`, if the command is a `PostConditionCommand` with
+A command that cannot execute (`canExecute() == false`) is ignored. Otherwise
+the redo stack is flushed *before* `execute()`, so a failing command still
+clears it. After `execute()`, if the command is a `PostConditionCommand` with
 `couldExecute() == false`, the command is **not** pushed on the undo stack, and
-an info dialog titled "Error" shows `getErrorMessage()`. This covers create
+an info dialog titled "Error" shows `getErrorMessage()` (if it is not null). This covers create
 connection, create literal, rename, and rename diagram type. Commands with
 `canUndo() == false` are `RenameDiagramTypeCommand` and the initial "create
 Main" command.
@@ -440,7 +472,9 @@ Main" command.
   2. **Select parameters**: a checkbox table of
      `FeatureConfiguration.getNewInParameters()` (inner in-parameter paths such
      as `blk.inner.par`). Each has an editable new name, by default the first
-     path segment plus the last one, and *Select all* is on by default. When
+     path segment plus the last one. *Select all* is on by default, but it
+     is applied only when this page is shown; the wizard can finish on page 1,
+     and then no parameters are exposed (except those pre-checked below). When
      changing an existing block, paths already exposed are pre-checked using
      `DiagramType.isInnerParameterExposed(path)`
      (`RecommendationSupport.jrag`).
@@ -466,17 +500,21 @@ Main" command.
   `localLookup` in every super type.
 * **Command** (`ChangeSuperTypesAndParametersCommand`):
   * Replaces `SuperTypeList`, `LocalInParameterList` and
-    `LocalOutParameterList` **with new nodes** built from `name:type` strings.
+    `LocalOutParameterList` **with new nodes**: super types from their names,
+    parameters from `name:type` strings.
   * Before that, it removes local flow decls that touch a node declared in a
     super type that is no longer reachable, and connections on removed
     parameters.
-  * Undo restores the old lists. A commented-out "interception conflicts"
+  * Undo restores the old lists and the whole `FlowDeclList` (a tree copy
+    taken when the command was created). A commented-out "interception conflicts"
     panel (`DiagramType.interceptionConflicts()`) exists in the source.
 
 ### 4.4 Outline (`outline/*`)
 
 * Tree: **Diagram types** → every named `DiagramType` in the unit. The label is
-  `Name : [Super1, Super2]`, in bold for the open type. Each one has children
+  `Name : Super1, Super2` (the AST list's `toString()`, no brackets; without
+  super types just `Name`), in bold for the open type. Anonymous types always
+  have a super type, so they show as `blockName : SuperType`. Each one has children
   for the anonymous diagram types of its local blocks
   (`Block.anonymousDiagramType()`, labelled with the enclosing block name),
   recursively. Selecting a node opens it on the canvas.
@@ -487,8 +525,12 @@ Main" command.
   * **Rename diagram…** (named types only): `RenameDiagramTypeCommand` calls
     `UserDefType.changeName` (`Rename.jrag`), which rewrites all `TypeUse`s.
     Simple-named blocks of that type are renamed `NewType_N`
-    (`Block.updateTypeName`), and so is the block owning a wiring. All layout
-    keys starting with `Old::` or `Old$` are renamed. **Not undoable.**
+    (`Block.updateTypeName`); the block owning a wiring gets exactly the new
+    type name (and loses `simple`). Layout keys whose type part is `Old`
+    (`Old::x`) or starts with `Old$` are renamed, but not the keys of the
+    renamed blocks themselves (`Old_1`, `Main::Old_1`), so those blocks lose
+    their position. The new name is only checked against existing types, not
+    with `isIdValid`. **Not undoable.**
   * **Delete diagram…**: refused for the last named diagram type. Asks for
     confirmation and warns if `uses()` is non-empty, but **leaves dangling
     references**. Deleting an *anonymous* type replaces it with its first super
@@ -521,8 +563,10 @@ Main" command.
   operations in context menu* (off), *Enable experimental features* (off;
   **unused**).
 * **Missing diagram type** on open: the user is prompted to create one (§1).
-* **Dirty tracking**: the command stack save point. *Save As* is not
-  implemented.
+* **Dirty tracking**: the command stack save point, plus a flag set when the
+  missing-type prompt creates a diagram type. *Save As* is not implemented:
+  `doSaveAs()` is empty but `isSaveAsAllowed()` returns true, so the command is
+  enabled and silently does nothing.
 * There is no text view, no simulation, and no code generation from the editor.
 
 ---
@@ -561,9 +605,11 @@ annotation(
   walks `dt.superTypesLinearizedReversed()` (most specific type first). It uses
   key `name` in the declaring type and `accessString` in the others, and takes
   the first hit. If the hit came from a super type, it is **copied** into
-  `dt`'s map under `Super::name`. A subtype therefore inherits its super type's
-  layout until the user moves something, and the inherited position is written
-  into the subtype's annotations on the next save.
+  `dt`'s map under `Super::name`, and written into the subtype's annotations
+  on the next save. This only fills in nodes missing from a subtype that
+  already has a layout: a subtype with no stored rectangles of its own (a new
+  one, or one created by *Specialize diagram…*) is auto-laid-out instead
+  (next point), so it does not inherit its super type's layout.
 * If a type has **no** stored rectangles when it is shown, it is auto-laid-out
   with KLay (§6.4). This is not on the undo stack and marks nothing dirty.
 * A node with no rectangle while others have one gets
@@ -596,8 +642,10 @@ Consequences, confirmed with a round-trip probe on `examples/` (§6.5):
   from the code; no example uses imports.
 * **Layouts of anonymous diagram types are never saved**: `typeDecls()` holds
   only top-level declarations, and the grammar has no annotation slot for
-  anonymous types. Each time an anonymous type is opened it is auto-laid-out
-  again.
+  anonymous types. An anonymous type is auto-laid-out when first opened; within
+  a session its layout is kept (per `DiagramType` object, in a `WeakHashMap`)
+  until the file is reopened or the block's type is replaced (change features
+  or specialisation).
 * Declaration order is preserved and new declarations are appended. Annotation
   entries are sorted by key, because `getAllRectangles` returns a `TreeMap`.
 * A file the editor has saved is a fixpoint. `PLib.dia`, which was evidently
@@ -607,16 +655,19 @@ Consequences, confirmed with a round-trip probe on `examples/` (§6.5):
 
 * `AutoLayoutKlay` builds a KGraph (KIELER KLay 2015-06,
   `de.cau.cs.kieler.klay.layered.LayeredLayoutProvider`). It has one node per
-  parameter, block and variable, one port per block port, and edges for
-  `dt.connections()`. Options: direction RIGHT, spacing 36, port constraints
-  `FIXED_POS` with the same port y-positions as the figures, and node width 60
-  (+16 when the node has incoming literals, to leave room for the label).
+  parameter, block and variable, one port per block port and one per parameter
+  and variable, and edges for `dt.connections()` whose two ends were found (so
+  none from literals). Options: direction RIGHT, spacing 36, port constraints
+  `FIXED_POS` (for blocks and parameters, not variables) with the same port
+  y-positions as the figures, and node width 60 (+16 when the node has
+  incoming literals, to leave room for the label).
 * Uses: when a type with no layout is first shown, the *Auto layout* toolbar
-  action, and inline/collapse (§3.7).
-* `Utils.autoLayoutKeepDeclarationOrder` uses the compiler's own
-  `AutoLayout.jrag` (`Block.autoLayoutX/Y`, based on `depth()` and
-  `sinkPred()`), as do `AutoLayoutDraw2D` and `AutoLayoutKlayMain`. These are
-  **unused** leftovers or experiments.
+  action, and inlining (§3.7). Collapsing does not run KLay.
+* Unused leftovers or experiments: `Utils.autoLayoutKeepDeclarationOrder` uses
+  the compiler's own `AutoLayout.jrag` (`Block.autoLayoutX/Y`, based on
+  `depth()` and `sinkPred()`); `AutoLayoutDraw2D` uses draw2d's
+  `DirectedGraphLayout`; `AutoLayoutKlayMain` runs `AutoLayoutKlay` from a
+  `main` method outside Eclipse.
 
 ### 6.5 Check against `examples/`
 
@@ -627,8 +678,9 @@ were identical. The probe lives in the session scratchpad and is not committed.
 
 Correction (milestone 1): the first probe ignored Beaver's error *recovery*,
 which is only printed to stderr. The new server's loader records recoveries
-as syntax errors, and that exposed two more broken files (`BloqqiMovie.dia`,
-`SimpleAddDiagram.dia`). The table below includes them.
+as syntax errors, and that exposed more broken files (`BloqqiMovie.dia`,
+`SimpleAddDiagram.dia`, and the old annotation keys in
+`P_PFF_PGS_Regulator.dia`). The table below includes them.
 
 | Example | Parses | Errors | Exercises |
 |---|---|---|---|
@@ -636,7 +688,7 @@ as syntax errors, and that exposed two more broken files (`BloqqiMovie.dia`,
 | `InlineExample.dia` | ✓ | 0 | `inline`, `redeclare`, nested anonymous types, wirings and wired blocks, connection and source interceptions, recommendations, `$` annotation keys |
 | `vlhcc-large.dia` | ✓ | 0 | inheritance, interceptions, recommendations, wirings, annotations |
 | `BloqqiMovie.dia` | ✓ (recovered) | 0 | as above, but its annotations use **old keys** `Gain:Out` (now `Gain::Out`); the parser only accepts them by recovering (`:` → `.`) |
-| `P_PFF_PGS_Regulator.dia` | ✓ | 3 (`Mux3_1.k` not found, `Mux3` declared twice) | annotations; comments lost on save |
+| `P_PFF_PGS_Regulator.dia` | ✓ (recovered) | 3 (`Mux3_1.k` not found, `Mux3` declared twice) | annotations with **old keys** `P:PV`, `PGS:Gain3`, accepted only by recovering as in `BloqqiMovie.dia` (those entries are lost); comments lost on save |
 | `SimpleAddDiagram.dia` | ✓ (recovered) | 0 | starts with `@Application`; recovery inserts EOF, so the file **parses as empty**. The old editor would prompt for a new `Main` and overwrite the file on save. |
 | `Tank.dia`, `Tank2.dia`, `TwoCounters.dia`, `Increament.dia`, `simple.dia`, `NestedVariableExample.dia` | ✓ | 0 | structs, external functions, no annotations (auto layout on open) |
 | `Example-Motor.dia` | ✓ (recovered) | 20 | **obsolete syntax** (`variable Bool x;`), so name analysis fails throughout |
@@ -674,11 +726,11 @@ end". They already live in `bloqqi-compiler` and have no Eclipse dependency.
 | Old code | Eclipse dependency | What to keep |
 |---|---|---|
 | `commands/*` (30 classes) | extend GEF `Command` (or `PostConditionCommand`, which extends it); several use `draw2d.geometry.Rectangle/Point` and the figure constants `BlockFigure.WIDTH/MIN_HEIGHT` and `PortPart.SIZE` | all the AST manipulation, undo bookkeeping (indices, tree copies), coordinate re-keying on rename, and connection cleanup. Swap in a 4-method `Command` interface and a plain rectangle record. |
-| `Coordinates` | `draw2d.geometry.Rectangle` | the per-type key/rectangle map and nearest-supertype lookup with copy-down |
+| `Coordinates` | `draw2d.geometry.Rectangle`; the figure constants `BlockFigure.WIDTH/MIN_HEIGHT` (for `RECTANGLE_NOT_FOUND`) | the per-type key/rectangle map and nearest-supertype lookup with copy-down |
 | `Utils.readProgram / readAnnotations / programToInputStream` | `IEditorInput`, `IFileEditorInput`, `Rectangle` | the load/save algorithm in §6 |
 | `autolayout/AutoLayoutKlay` | KLay 2015 jar (KGraph is **EMF-based**, so it also needs `org.eclipse.emf.ecore`/`common` jars, which the plug-in got from the Eclipse platform); draw2d `Rectangle`; figure constants | the graph construction and options. Runs outside Eclipse with EMF on the classpath; `AutoLayoutKlayMain.main` does this. See Q8. |
 | `tools/PortsFeedback` | GEF edit parts, SWT colours | the "valid target" rule: accessible ∧ type-compatible ∧ no incoming connection |
-| `actions/*.calculateEnabled()` | GEF `SelectionAction` | the enablement predicates in §3.7 and §4.4 |
+| `actions/*.calculateEnabled()` | GEF `SelectionAction` (via `MySelectionAction`) or `WorkbenchPartAction` (via `MyWorkbenchPartAction`, e.g. Auto layout, Diagram properties, Extract subtype) | the enablement predicates in §3.7 and §4.4 |
 | `wizards/specialize/PageParameters.NewInParameter` | lives in an SWT page | default new-name rule (first segment + last segment) |
 | `figures/*`, `editparts/*` constants | draw2d | geometry constants: block width 60, min height 20, port 6 px at `y=5+14i`, literal offset 12 px, parameter default 60×20 |
 
@@ -713,7 +765,7 @@ file.
 | Change features / specialisation | the declared block is replaced (new anonymous type); dangling flow decls are removed | – |
 | Diagram properties | `SuperTypeList`, `LocalIn/OutParameterList` replaced; affected flow decls removed | – |
 | Extract subtype as recommendation | `+DiagramType` (with wiring), `+Recommendation` | – |
-| New / rename / delete / specialise diagram type | `±DiagramType`; rename rewrites all `TypeUse`s and simple block names | rename re-keys; delete drops that type's map |
+| New / rename / delete / specialise diagram type | `±DiagramType`; rename rewrites all `TypeUse`s and simple block names | rename re-keys `Old::…`/`Old$…` (not the renamed `Old_N` blocks, which lose their position); delete drops that type's map |
 | Auto layout | – | whole type's map replaced |
 
 ---
@@ -732,8 +784,11 @@ file.
    rewritten connections. Or must the new editor preserve source text, for
    example by patching text through node positions? Do the files have
    hand-written comments people care about?
-   *Partly answered:* layout edits patch only the type's `annotation(...)`
-   block, located through AST source positions; the rest of the text is kept.
+   *Answered:* the new editor never pretty-prints. Every edit replaces only the
+   text it changes (statements, the header, the `extends` clause, the type's
+   `annotation(...)` block), located through AST source positions and the
+   scanner's tokens; comments, formatting, `import` and `package` are kept.
+   The text view saves the user's text as it is.
 3. **Where layout lives.** Keep `annotation(...)` blocks in the `.dia` file, or
    use a sidecar file? How should layouts of anonymous types (never saved
    today), literal positions, and per-subtype positions of inherited elements
@@ -744,11 +799,19 @@ file.
    subtype, literals not stored. Anonymous types are still open.
 4. **Scope of a session.** One file per session as today, or a project with
    several files and working `import`s? Several types open at once?
+   *Partly answered:* the server serves a workspace folder of `.dia` files,
+   which can be created, renamed and deleted (File ▾); a browser tab shows one
+   diagram type (or the file's text) at a time, and several tabs can be open.
+   `import`s across files are still open.
 5. **Which features to carry over.** Both specialisation mechanisms
    (`recommendation` wizards and `features` selection)? Extract subtype as
    recommendation? Multiple super types? Connection-router toggles and Print?
    The hidden `ChangeNameDisplayedAction` and the unused "experimental"
    preference look droppable.
+   *Partly answered:* multiple super types are kept, as an ordered list
+   ("Super types…"). The specialisation mechanisms, extracting subtypes,
+   router toggles and Print are not carried over yet
+   (see `docs/feature-comparison.md`).
 6. **Permissive or strict connection creation.** The old editor lets users
    create type-incompatible or double-driven connections; feedback is only
    colour. Should the new editor refuse them?
@@ -758,9 +821,16 @@ file.
 7. **Live errors.** Today the marker list refreshes only on open and save, and
    the canvas shows only cycle and connection errors. Should every
    `errors()` entry be shown live and attached to its element?
+   *Partly answered:* the problem list (syntax and semantic errors of the
+   whole file) is rebuilt with every diagram, and the text view checks while
+   typing and underlines problems. On the canvas, as before, only cycles and
+   connection errors are marked; attaching all errors to elements is open.
 8. **Auto-layout engine.** KLay 2015 is unmaintained and needs EMF. Should the
    server use ELK (its Java successor), or should the client lay out with
    `elkjs`? Must layouts be deterministic and reproducible on the server?
+   *Answered:* ELK 0.12.1 on the server (layered, fixed port order,
+   orthogonal edges); it is used when a type has no stored layout, and by
+   Auto layout, which stores the result.
 9. **Undo/redo model.** Should undo be a server-side command stack (as today,
    with diagram-type rename not undoable)? Is it per user or per file?
    *Answered:* per browser tab and per file, kept in the client (the server is
@@ -779,9 +849,14 @@ file.
     `Example-Pregulator.dia`, and silently works on a recovered tree for others.
     Should the new editor offer a text fallback? Should the two obsolete-syntax
     examples be migrated or deleted?
+    *Partly answered:* a file with syntax errors is shown read-only (with its
+    problems), and the text view edits any file, also one with errors.
+    Migrating the obsolete examples is open.
 13. **Non-diagram declarations.** Functions, state machines, structs and
     external functions are palette-only today. Should the new editor display or
     edit them (for example as text)?
+    *Partly answered:* external functions can be created with a form (New ▾);
+    all declarations can be read and edited in the text view.
 14. **Wired blocks.** Parameters and connections contributed by wired blocks
     and `wiring` declarations are drawn like ordinary ones. I did not establish
     how `isInherited()` classifies them visually. Should they get their own

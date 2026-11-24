@@ -12,7 +12,8 @@ final class Examples {
 	 * <ul>
 	 * <li>Example-Pregulator.dia: obsolete syntax ({@code variable Real x;}), does not parse</li>
 	 * <li>Example-Motor.dia: same obsolete syntax, parses with 20 errors</li>
-	 * <li>P_PFF_PGS_Regulator.dia: 3 errors (Mux3 declared twice, Mux3_1.k not found)</li>
+	 * <li>P_PFF_PGS_Regulator.dia: 3 errors (Mux3 declared twice, Mux3_1.k not found), and
+	 *     old annotation keys {@code P:PV} that the parser only accepts through error recovery</li>
 	 * <li>BloqqiMovie.dia: old annotation keys {@code Gain:Out} (now {@code Gain::Out});
 	 *     the parser only accepts them through error recovery</li>
 	 * <li>SimpleAddDiagram.dia: starts with {@code @Application}; error recovery
