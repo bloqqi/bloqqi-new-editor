@@ -126,7 +126,8 @@ docker build -t bloqqi-editor .
 - `ant clean` removes build outputs.
 
 `docs/editor-spec.md` describes the old editor and the design decisions;
-`docs/feature-comparison.md` compares its features with the new editor's.
+`docs/feature-comparison.md` compares its features with the new editor's, and
+`docs/next-steps.md` lists what could come next.
 `CLAUDE.md` has notes on the architecture and its pitfalls.
 
 ## License

@@ -15,6 +15,8 @@
   behaviour against; it is described in `docs/editor-spec.md`. It is not part
   of the build. Don't edit it. `docs/feature-comparison.md` compares its
   features with the new editor's; update it when a feature is added.
+  `docs/next-steps.md` lists the open features and planned work (e.g. the
+  protocol contract test); update it when one is done.
 - Server (`server/`): Java 21, Jetty 12 (core, no servlets). It serves the built
   client and a WebSocket at `/ws`. Every request reloads the file from the
   workspace directory; the server keeps no model. Each socket only remembers
