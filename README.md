@@ -128,3 +128,8 @@ docker build -t bloqqi-editor .
 `docs/editor-spec.md` describes the old editor and the design decisions;
 `docs/feature-comparison.md` compares its features with the new editor's.
 `CLAUDE.md` has notes on the architecture and its pitfalls.
+
+## License
+
+The Bloqqi web editor is covered by the modified BSD License, as the Bloqqi
+compiler is. For the full license text see the LICENSE file.
