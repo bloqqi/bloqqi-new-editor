@@ -1,5 +1,7 @@
 import { AddForm } from './AddForm';
 import { ConfirmForm } from './ConfirmForm';
+import { FeaturesForm } from './FeaturesForm';
+import { FeaturesQuestion } from './FeaturesQuestion';
 import { NewFileForm } from './NewFileForm';
 import { ContextMenu } from './ContextMenu';
 import { ExternalFunctionForm } from './ExternalFunctionForm';
@@ -26,6 +28,8 @@ export function Dialogs({
     d.externalForm ||
     d.superTypesForm ||
     d.parametersForm ||
+    d.featuresForm ||
+    d.featuresQuestion ||
     d.newFileForm ||
     d.deleteFileForm
   );
@@ -61,6 +65,27 @@ export function Dialogs({
           error={d.formError}
           busy={busy}
           onSubmit={d.submitSuperTypes}
+          onCancel={d.cancelForm}
+        />
+      )}
+      {d.featuresQuestion && (
+        <FeaturesQuestion
+          block={d.featuresQuestion.block}
+          base={d.featuresQuestion.base}
+          screen={d.featuresQuestion.screen}
+          onSelect={() => d.featuresQuestion && d.editFeatures(d.featuresQuestion.block, d.featuresQuestion.screen)}
+          onDecline={d.cancelForm}
+        />
+      )}
+      {d.featuresForm && diagram?.diagramType && (
+        <FeaturesForm
+          key={d.featuresForm.block}
+          block={d.featuresForm.block}
+          features={d.featuresForm.features}
+          screen={d.featuresForm.screen}
+          error={d.formError}
+          busy={busy}
+          onSubmit={d.submitFeatures}
           onCancel={d.cancelForm}
         />
       )}

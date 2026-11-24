@@ -97,8 +97,11 @@ export interface CanvasProps {
   isValidConnection: IsValidConnection<FlowEdgeType>;
   /** Called with the selection when Delete/Backspace is pressed; React Flow itself deletes nothing. */
   onDelete: (selection: { nodes: DiagramFlowNode[]; edges: FlowEdgeType[] }) => void;
-  /** A palette entry was dropped: add a block of the type with its top-left corner at (x, y). */
-  onAddBlock: (typeName: string, x: number, y: number) => void;
+  /**
+   * A palette entry was dropped: add a block of the type with its top-left
+   * corner at (x, y); `screen` is where it was dropped.
+   */
+  onAddBlock: (typeName: string, x: number, y: number, screen: { x: number; y: number }) => void;
   /** A tool was dropped (literal: on the target port, if any): open its form. */
   onTool: (request: Omit<FormRequest, 'suggestedName'>) => void;
   onNodeContextMenu: NodeMouseHandler<DiagramFlowNode>;
@@ -163,7 +166,7 @@ function Flow({
       const p = flow.screenToFlowPosition({ x: event.clientX, y: event.clientY });
       const position = { x: Math.max(0, Math.round(p.x - BLOCK_WIDTH / 2)), y: Math.max(0, Math.round(p.y - 10)) };
       if (typeName) {
-        onAddBlock(typeName, position.x, position.y);
+        onAddBlock(typeName, position.x, position.y, { x: event.clientX, y: event.clientY });
       } else if (tool) {
         const screen = { x: event.clientX, y: event.clientY };
         const target = tool === 'literal' ? freeInputNear(screen.x, screen.y) : undefined;

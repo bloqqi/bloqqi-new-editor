@@ -41,9 +41,9 @@ one in [README.md](../README.md) and [CLAUDE.md](../CLAUDE.md). State as of
 | Intercept inherited connection (also at the source) | ✅ | ✅ same click interaction |
 | Inline / Collapse a block | ✅ | ❌ |
 | Connect ports inside inlined blocks | ✅ (rewrites the block) | ❌ refused |
-| Feature selection (`features`) | ✅ wizard | ❌ |
-| Specialisation from recommendations | ✅ wizards | ❌ |
-| Extract subtype as recommendation | ✅ | ❌ |
+| Feature selection (`features`) | ✅ wizard, also asked on drop | ✅ "Features…" form, also for plain blocks; also asked on drop |
+| Specialisation from recommendations | ✅ wizards | ❌ not carried over (decided) |
+| Extract subtype as recommendation | ✅ | ❌ not carried over (decided) |
 
 ## Types and files
 
@@ -72,6 +72,5 @@ one in [README.md](../README.md) and [CLAUDE.md](../CLAUDE.md). State as of
 
 ## Main gaps in the new editor
 
-Inline/collapse, the two specialisation mechanisms (features and
-recommendations), opening anonymous types, and some smaller items: naming a
-block on drop, resizing nodes, and printing.
+Inline/collapse, opening anonymous types, and some smaller items: naming a
+block on drop, resizing nodes, and printing. (The `recommendation` mechanism is deliberately not carried over.)

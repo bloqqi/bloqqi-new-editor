@@ -60,13 +60,18 @@ import com.google.gson.JsonParser;
  * client -> server  {"type":"checkText", "file", "text"}
  *                   (answered with {"type":"problems", "problems":[{line,column,message}]}
  *                    for that text; nothing is written)
+ * client -> server  {"type":"features", "file", "diagramType", "block"}
+ *                   (answered with {"type":"features", "block", "base", "options":[{name,typeName,
+ *                    selected,excludes:[...],before:[...]}]}; see FeatureEdits)
+ * client -> server  {"type":"setFeatures", "file", "diagramType", "block", "features":[...]}
+ *                   (an edit: exactly these features for the block)
  * client -> server  {"type":"generateC", "file", "variant"}   ("minimal" or "with-driver")
  *                   (answered with {"type":"cCode", "variant", "code": the C code, or null
  *                    if the compiler would refuse, "problems":[...] why; see CCode)
  * server -> client  {"type":"diagram", "file", "diagramType", "diagramTypes":[...],
  *                    "nodes":[{id,kind,label,typeName,inherited,inlined,error,x,y,width,height,
  *                              inPorts:[{name,typeName,y,connectable}], outPorts:[...],
- *                              inConnectable,outConnectable,deletable}],
+ *                              inConnectable,outConnectable,deletable,featureBase}],
  *                    "edges":[{id,source,sourceHandle,target,targetHandle,
  *                              inherited,deletable,interceptable,error,fromLiteral,intercept,largeMarker}],
  *                    "problems":[{line,column,message}],
@@ -99,7 +104,8 @@ final class Protocol {
 			AddDiagramTypeRequest, AddExternalFunctionRequest, RenameTypeRequest, DeleteTypeRequest,
 			AddSubtypeRequest, SetSuperTypesRequest, SetParametersRequest, CreateFileRequest, RenameFileRequest, DeleteFileRequest,
 			InterceptRequest,
-			RestoreRequest, SetTextRequest, CheckTextRequest, GenerateCRequest {
+			RestoreRequest, SetTextRequest, CheckTextRequest, GenerateCRequest, FeaturesRequest,
+			SetFeaturesRequest {
 		String file();
 	}
 
@@ -209,6 +215,15 @@ final class Protocol {
 
 	/** The problems {@code text} would have (the text view, while typing); nothing is written. */
 	record CheckTextRequest(String file, String text) implements Request {
+	}
+
+	/** The optional features of a block's type, and which the block selects; nothing is written. */
+	record FeaturesRequest(String file, String diagramType, String block) implements Request {
+	}
+
+	/** Select exactly these features for a block. */
+	record SetFeaturesRequest(String file, String diagramType, String block, List<String> features)
+			implements Request {
 	}
 
 	/** The C code the compiler generates for the file (the C view); nothing is written. */
@@ -345,6 +360,13 @@ final class Protocol {
 			return new SetTextRequest(required(o, "file"), string(o, "diagramType"),
 					required(o, "text"), required(o, "expected"));
 		}
+		if ("features".equals(type)) {
+			return new FeaturesRequest(required(o, "file"), required(o, "diagramType"), required(o, "block"));
+		}
+		if ("setFeatures".equals(type)) {
+			return new SetFeaturesRequest(required(o, "file"), required(o, "diagramType"), required(o, "block"),
+					strings(o, "features"));
+		}
 		if ("generateC".equals(type)) {
 			return new GenerateCRequest(required(o, "file"), required(o, "variant"));
 		}
@@ -400,6 +422,26 @@ final class Protocol {
 		return GSON.toJson(o);
 	}
 
+	/** The answer to "features". */
+	static String features(FeatureEdits.Features f) {
+		JsonObject o = new JsonObject();
+		o.addProperty("type", "features");
+		o.addProperty("block", f.block());
+		o.addProperty("base", f.base());
+		JsonArray options = new JsonArray();
+		for (FeatureEdits.Option opt : f.options()) {
+			JsonObject jo = new JsonObject();
+			jo.addProperty("name", opt.name());
+			jo.addProperty("typeName", opt.typeName());
+			jo.addProperty("selected", opt.selected());
+			jo.add("excludes", strings(opt.excludes()));
+			jo.add("before", strings(opt.before()));
+			options.add(jo);
+		}
+		o.add("options", options);
+		return GSON.toJson(o);
+	}
+
 	/** The answer to "generateC". */
 	static String cCode(String variant, CCode.Result result) {
 		JsonObject o = new JsonObject();
@@ -447,6 +489,7 @@ final class Protocol {
 			jn.addProperty("inConnectable", n.inConnectable());
 			jn.addProperty("outConnectable", n.outConnectable());
 			jn.addProperty("deletable", n.deletable());
+			jn.addProperty("featureBase", n.featureBase());
 			nodes.add(jn);
 		}
 		o.add("nodes", nodes);

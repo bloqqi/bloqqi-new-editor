@@ -8,8 +8,8 @@ import { unusedName } from './flow';
 import type { DiagramFlowNode } from './nodes';
 import type { Tool } from './Palette';
 import type { PromptRequest } from './PromptForm';
-import type { ClientMessage, DiagramMessage, Endpoint, ParameterSpec } from './protocol';
-import type { RequestKind } from './useServer';
+import type { ClientMessage, DiagramMessage, Endpoint, FeaturesMessage, ParameterSpec } from './protocol';
+import type { Answer, RequestKind } from './useServer';
 
 type Point = { x: number; y: number };
 
@@ -26,6 +26,10 @@ export interface Dialogs {
   superTypesForm: Point | null;
   /** The form for the order of the shown type's parameters (where it opens). */
   parametersForm: Point | null;
+  /** Asked after adding a block of a type with features: select them now? */
+  featuresQuestion: { block: string; base: string; screen: Point } | null;
+  /** The feature selection of a block (its features are fetched first). */
+  featuresForm: { block: string; screen: Point; features: FeaturesMessage | null } | null;
   /** The form for a new file (where it opens). */
   newFileForm: Point | null;
   /** Confirming that the shown file is to be deleted (where it opens). */
@@ -50,6 +54,8 @@ export interface Dialogs {
   newSubtype: (superType: string, screen: Point) => void;
   editSuperTypes: (screen: Point) => void;
   editParameters: (screen: Point) => void;
+  editFeatures: (block: string, screen: Point) => void;
+  askFeatures: (block: string, base: string, screen: Point) => void;
   newFile: (screen: Point) => void;
   renameFile: (screen: Point) => void;
   deleteFile: (screen: Point) => void;
@@ -62,6 +68,7 @@ export interface Dialogs {
   submitExternalFunction: (name: string, inputs: ParameterSpec[], output: ParameterSpec | null) => void;
   submitSuperTypes: (superTypes: string[]) => void;
   submitParameters: (inParameters: string[], outParameters: string[]) => void;
+  submitFeatures: (features: string[]) => void;
   submitNewFile: (file: string, diagramType: string | null) => void;
   submitDeleteFile: () => void;
   /** Closes the open form. */
@@ -74,12 +81,14 @@ export function useDialogs({
   diagram,
   editable,
   send,
+  request,
   literalConnections,
   setError,
 }: {
   diagram: DiagramMessage | null;
   editable: boolean;
   send: (message: ClientMessage, kind?: RequestKind) => void;
+  request: (message: ClientMessage, kind?: RequestKind) => Promise<Answer>;
   literalConnections: Map<string, string>;
   setError: (error: string | null) => void;
 }): Dialogs {
@@ -89,6 +98,8 @@ export function useDialogs({
   const [externalForm, setExternalForm] = useState<Point | null>(null);
   const [superTypesForm, setSuperTypesForm] = useState<Point | null>(null);
   const [parametersForm, setParametersForm] = useState<Point | null>(null);
+  const [featuresForm, setFeaturesForm] = useState<Dialogs['featuresForm']>(null);
+  const [featuresQuestion, setFeaturesQuestion] = useState<Dialogs['featuresQuestion']>(null);
   const [newFileForm, setNewFileForm] = useState<Point | null>(null);
   const [deleteFileForm, setDeleteFileForm] = useState<Point | null>(null);
   const [interceptPick, setInterceptPick] = useState<{
@@ -108,6 +119,8 @@ export function useDialogs({
     setExternalForm(null);
     setSuperTypesForm(null);
     setParametersForm(null);
+    setFeaturesForm(null);
+    setFeaturesQuestion(null);
     setNewFileForm(null);
     setDeleteFileForm(null);
     setFormError(null);
@@ -178,6 +191,29 @@ export function useDialogs({
   const editParameters = useCallback((screen: Point) => {
     setFormError(null);
     setParametersForm(screen);
+  }, []);
+
+  const editFeatures = useCallback(
+    (block: string, screen: Point) => {
+      if (!diagram?.diagramType) return;
+      setFormError(null);
+      setFeaturesQuestion(null);
+      setFeaturesForm({ block, screen, features: null });
+      void request({ type: 'features', file: diagram.file, diagramType: diagram.diagramType, block }).then(
+        (answer) => {
+          if (answer.type === 'features') {
+            setFeaturesForm((f) => (f && f.block === block ? { ...f, features: answer } : f));
+          } else if (answer.type === 'error') {
+            setFormError(answer.message);
+          }
+        },
+      );
+    },
+    [diagram, request],
+  );
+
+  const askFeatures = useCallback((block: string, base: string, screen: Point) => {
+    setFeaturesQuestion({ block, base, screen });
   }, []);
 
   const newFile = useCallback((screen: Point) => {
@@ -341,8 +377,30 @@ export function useDialogs({
     [diagram, send],
   );
 
+  const submitFeatures = useCallback(
+    (features: string[]) => {
+      if (!diagram?.diagramType || !featuresForm) return;
+      send(
+        {
+          type: 'setFeatures',
+          file: diagram.file,
+          diagramType: diagram.diagramType,
+          block: featuresForm.block,
+          features,
+        },
+        'form',
+      );
+    },
+    [diagram, featuresForm, send],
+  );
+
   return {
     menu,
+    featuresForm,
+    featuresQuestion,
+    askFeatures,
+    editFeatures,
+    submitFeatures,
     superTypesForm,
     parametersForm,
     editParameters,

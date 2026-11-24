@@ -89,6 +89,9 @@ public record Diagram(
 	 * @param outConnectable a new connection may start at the {@code out} handle
 	 * @param deletable      can be deleted here: a block declared in this type's body
 	 *                       (not inherited or inlined)
+	 * @param featureBase    for a block whose type declares optional features (directly, or
+	 *                       through its anonymous type {@code b: B { feature f; }}): that
+	 *                       type's name (see {@link FeatureEdits}); otherwise null
 	 */
 	public record DiagramNode(
 			String id,
@@ -106,7 +109,8 @@ public record Diagram(
 			List<DiagramPort> outPorts,
 			boolean inConnectable,
 			boolean outConnectable,
-			boolean deletable) {
+			boolean deletable,
+			String featureBase) {
 	}
 
 	/**

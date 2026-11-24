@@ -83,7 +83,9 @@ final class Layout {
 		for (Node n : nodes) {
 			Rect r = storedRect(n);
 			if (r != null) {
-				result.put(n.accessString(), r);
+				// Never shorter than its ports need (e.g. its type got more parameters).
+				int minHeight = minHeight(n);
+				result.put(n.accessString(), r.height() >= minHeight ? r : new Rect(r.x(), r.y(), r.width(), minHeight));
 			} else {
 				missing.add(n);
 			}

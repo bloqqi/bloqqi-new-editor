@@ -287,6 +287,7 @@ public final class DiagramBuilder {
 			boolean inConnectable = false;
 			boolean outConnectable = false;
 			boolean deletable = false;
+			String featureBase = null;
 			List<DiagramPort> in = List.of();
 			List<DiagramPort> out = List.of();
 			if (n instanceof Block b) {
@@ -294,6 +295,10 @@ public final class DiagramBuilder {
 				typeName = b.type().name();
 				error = b.isOnTypeCycle() || b.isDataflowCircular();
 				deletable = isDeletable(b, dt);
+				if (declaration(b) instanceof Block declared) {
+					DiagramType base = FeatureEdits.featureBase(declared);
+					featureBase = base != null ? base.name() : null;
+				}
 				in = ports(b.getInPorts());
 				out = ports(b.getOutPorts());
 			} else if (n instanceof Parameter p) {
@@ -312,7 +317,8 @@ public final class DiagramBuilder {
 			}
 			return new DiagramNode(id, kind, labels.get(id), typeName,
 					n.isInherited(), n.isInlined(), error,
-					r.x(), r.y(), r.width(), r.height(), in, out, inConnectable, outConnectable, deletable);
+					r.x(), r.y(), r.width(), r.height(), in, out, inConnectable, outConnectable, deletable,
+					featureBase);
 		}
 
 		/** A literal is drawn left of its target, level with the target port (LiteralPart). */
@@ -333,7 +339,8 @@ public final class DiagramBuilder {
 			}
 			int x = r.x() - width - LITERAL_GAP;
 			return new DiagramNode("#literal:" + target, Diagram.LITERAL, text, lit.type().name(),
-					false, false, false, x, y, width, LITERAL_HEIGHT, List.of(), List.of(), false, false, false);
+					false, false, false, x, y, width, LITERAL_HEIGHT, List.of(), List.of(), false, false, false,
+					null);
 		}
 
 		private static List<DiagramPort> ports(Iterable<Port> ports) {

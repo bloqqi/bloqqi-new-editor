@@ -25,6 +25,8 @@ export interface MenuContext {
   editSuperTypes: (at: Point) => void;
   /** The form for the order of the shown type's parameters. */
   editParameters: (at: Point) => void;
+  /** The feature selection of a block. */
+  editFeatures: (block: string, at: Point) => void;
   deleteType: (typeName: string) => void;
   intercept: (edge: string, atSource: boolean) => void;
 }
@@ -58,6 +60,9 @@ export function nodeMenu(node: DiagramFlowNode, c: MenuContext, at: Point): Menu
       disabledReason: local ? null : `${typeName} is not a diagram type in ${c.diagram.file}`,
       onSelect: () => c.open(c.diagram.file, typeName),
     });
+    if (node.data.featureBase) {
+      items.push({ label: 'Features…', disabledReason: reason, onSelect: () => c.editFeatures(node.id, at) });
+    }
   }
   if (node.type === 'inParameter' || node.type === 'outParameter') {
     items.push({ label: 'Parameters…', disabledReason: readOnly, onSelect: () => c.editParameters(at) });

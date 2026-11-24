@@ -9,6 +9,7 @@ import {
   type CCodeMessage,
   type DiagramMessage,
   type ErrorMessage,
+  type FeaturesMessage,
   type ProblemsMessage,
   type ServerMessage,
 } from './protocol';
@@ -29,7 +30,7 @@ export type Status = 'connecting' | 'open' | 'reconnecting';
 export type RequestKind = 'open' | 'navigate' | 'edit' | 'form' | 'undo' | 'redo' | 'query';
 
 /** An answer to a request. */
-export type Answer = DiagramMessage | ProblemsMessage | CCodeMessage | ErrorMessage;
+export type Answer = DiagramMessage | ProblemsMessage | CCodeMessage | FeaturesMessage | ErrorMessage;
 
 interface Pending {
   kind: RequestKind;
@@ -41,7 +42,7 @@ interface Pending {
 const defaultKind = (message: ClientMessage): RequestKind =>
   message.type === 'open'
     ? 'open'
-    : message.type === 'checkText' || message.type === 'generateC'
+    : message.type === 'checkText' || message.type === 'generateC' || message.type === 'features'
       ? 'query'
       : 'edit';
 
@@ -251,6 +252,7 @@ export function useServer(onFormAnswered: (error: string | null) => void): Serve
           }
           case 'problems':
           case 'cCode':
+          case 'features':
             answered()?.resolve?.(message);
             break;
           // Pushed by the server, not answers: they leave the request queue alone.

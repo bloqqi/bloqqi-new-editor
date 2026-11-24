@@ -1053,6 +1053,88 @@ test('connections are drawn even if a node that stays on screen is not measured 
   await expect(edges).toHaveCount(count);
 });
 
+test("a block's features can be selected; excluded ones are unselected", async ({ page }) => {
+  // Features.dia is a copy of PLib.dia that only this test edits: features P
+  // { Derivative: PD; Integral: PI; PTrack: PTrack; PTrack excludes Integral; ... }
+  const text = () => readWorkspaceFile('Features.dia');
+  const original = text();
+  await goto(page, '/?file=Features.dia&type=Main');
+  const inPorts = node(page, 'pid').locator('.react-flow__handle[data-handleid^="in:"]');
+  await expect(inPorts).toHaveCount(8);
+  // Moving it stores the layout, with pid's height for its 8 in-ports (14 * 8 + 2).
+  await drag(page, 'pid', 40, 20);
+  await expect.poll(text).toMatch(/pid = \(\d+, \d+, \d+, 114\)/);
+  const height = async () => (await node(page, 'pid').boundingBox())!.height;
+  const tall = await height();
+
+  await node(page, 'pid').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Features…' }).click();
+  const form = page.getByTestId('features-form');
+  const box = (name: string) => form.getByRole('checkbox', { name, exact: true });
+  await expect(box('Derivative')).toBeChecked();
+  await expect(box('Integral')).toBeChecked();
+  await expect(box('PTrack')).not.toBeChecked();
+  await expect(form.getByTestId('features-order')).toHaveText('In this order: Derivative, Integral');
+  await expect(form.getByRole('button', { name: 'Apply' })).toBeDisabled();
+
+  // PTrack excludes Integral.
+  await box('PTrack').check();
+  await expect(box('Integral')).not.toBeChecked();
+  await expect(form).toContainText('PTrack excludes Integral, so it was unselected.');
+  await expect(form.getByTestId('features-order')).toHaveText('In this order: Derivative, PTrack');
+  await form.getByRole('button', { name: 'Apply' }).click();
+  await expect(form).toHaveCount(0);
+  await expect
+    .poll(text)
+    .toContain('  pid: P {\n    feature Derivative;\n    feature PTrack;\n  };');
+  // PTrack's ports Track and TrackValue instead of Integral's Ti; the block fits them.
+  await expect(inPorts).toHaveCount(7);
+  await expect.poll(text).toMatch(/pid = \(\d+, \d+, \d+, 100\)/);
+  await expect.poll(height).toBeLessThan(tall);
+  await expect(node(page, 'pid').locator('.react-flow__handle[data-handleid="in:Track"]')).toHaveCount(1);
+
+  // None: a plain block; Escape closes the form.
+  await node(page, 'pid').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Features…' }).click();
+  await box('Derivative').uncheck();
+  await box('PTrack').uncheck();
+  await expect(form.getByTestId('features-order')).toHaveText('No features: a plain block of P.');
+  await page.keyboard.press('Escape');
+  await expect(form).toHaveCount(0);
+
+  // Undo (the feature change, then the move).
+  await page.getByTestId('undo').click();
+  await expect(inPorts).toHaveCount(8);
+  await expect.poll(height).toBe(tall);
+  await page.getByTestId('undo').click();
+  await expect.poll(text).toBe(original);
+
+  // Adding a block of a type with features asks whether to select them.
+  const question = page.getByTestId('features-question');
+  await page.getByTestId('palette-P').dragTo(page.locator('.react-flow__pane'), { targetPosition: { x: 420, y: 300 } });
+  await expect(question).toContainText('P has optional features. Select features for P_1?');
+  await question.getByRole('button', { name: 'Select features…' }).click();
+  await expect(question).toHaveCount(0);
+  await expect(form).toContainText('Features of P_1');
+  await expect(box('Derivative')).not.toBeChecked();
+  await box('Integral').check();
+  await form.getByRole('button', { name: 'Apply' }).click();
+  await expect.poll(text).toContain('  P_1: P {\n    feature Integral;\n  };');
+  // "No": a plain block.
+  await page.getByTestId('palette-P').dragTo(page.locator('.react-flow__pane'), { targetPosition: { x: 420, y: 420 } });
+  await expect(question).toContainText('Select features for P_2?');
+  await question.getByRole('button', { name: 'No' }).click();
+  await expect(question).toHaveCount(0);
+  await expect(form).toHaveCount(0);
+  expect(text()).toContain('  P_2;\n');
+
+  // Blocks whose type has no features have no such item.
+  await page.getByTestId('type-select').selectOption('PTrack');
+  await node(page, 'SelReal_1').click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: 'Rename…' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: 'Features…' })).toHaveCount(0);
+});
+
 test('an inherited connection can be intercepted in a subtype', async ({ page }) => {
   // Intercept.dia is a copy of PLib.dia that only this test edits.
   const file = resolve('..', 'build', 'e2e-workspace', 'Intercept.dia');

@@ -41,6 +41,8 @@ export interface DiagramNode {
   outConnectable: boolean;
   /** A block declared in this type's body, which can be deleted here. */
   deletable: boolean;
+  /** For a block whose type declares optional features: that type (see FeatureEdits), else null. */
+  featureBase: string | null;
 }
 
 /** A type a block can be added of (the palette; see DiagramBuilder.palette). */
@@ -150,6 +152,7 @@ export type ServerMessage =
   | ErrorMessage
   | ProblemsMessage
   | CCodeMessage
+  | FeaturesMessage
   | UpdateMessage
   | FilesMessage
   | NoticeMessage;
@@ -408,6 +411,43 @@ export interface CheckTextRequest {
   text: string;
 }
 
+/** The optional features of a block's type (answered with "features"). */
+export interface FeaturesRequest {
+  type: 'features';
+  file: string;
+  diagramType: string;
+  block: string;
+}
+
+/** Select exactly these features for a block (an edit). */
+export interface SetFeaturesRequest {
+  type: 'setFeatures';
+  file: string;
+  diagramType: string;
+  block: string;
+  features: string[];
+}
+
+/** A feature a block can select. */
+export interface FeatureOption {
+  name: string;
+  /** The type implementing it (a subtype of the base). */
+  typeName: string;
+  selected: boolean;
+  /** Features it cannot be used together with. */
+  excludes: string[];
+  /** Features it must come before. */
+  before: string[];
+}
+
+export interface FeaturesMessage {
+  type: 'features';
+  block: string;
+  /** The type declaring the features. */
+  base: string;
+  options: FeatureOption[];
+}
+
 /** How much C to generate: as `bloqqi-compiler --c=minimal`, or `--c` (with a `main()` loop). */
 export type CVariant = 'minimal' | 'with-driver';
 
@@ -452,7 +492,9 @@ export type ClientMessage =
   | RestoreRequest
   | SetTextRequest
   | CheckTextRequest
-  | GenerateCRequest;
+  | GenerateCRequest
+  | FeaturesRequest
+  | SetFeaturesRequest;
 
 export function webSocketUrl(): string {
   const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';

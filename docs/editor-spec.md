@@ -808,10 +808,11 @@ file.
    recommendation? Multiple super types? Connection-router toggles and Print?
    The hidden `ChangeNameDisplayedAction` and the unused "experimental"
    preference look droppable.
-   *Partly answered:* multiple super types are kept, as an ordered list
-   ("Super types…"). The specialisation mechanisms, extracting subtypes,
-   router toggles and Print are not carried over yet
-   (see `docs/feature-comparison.md`).
+   *Answered:* multiple super types are kept, as an ordered list
+   ("Super types…"), and so is feature selection ("Features…" on a block).
+   The `recommendation` mechanism (its wizards and Extract subtype as
+   recommendation) is not carried over. Router toggles and Print are not
+   carried over yet (see `docs/feature-comparison.md`).
 6. **Permissive or strict connection creation.** The old editor lets users
    create type-incompatible or double-driven connections; feedback is only
    colour. Should the new editor refuse them?

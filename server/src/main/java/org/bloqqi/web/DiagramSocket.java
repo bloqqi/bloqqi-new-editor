@@ -93,6 +93,9 @@ public final class DiagramSocket implements Session.Listener.AutoDemanding {
 					List<Problem> problems = new java.util.ArrayList<>(checked.syntaxErrors());
 					problems.addAll(checked.semanticErrors());
 					json = Protocol.problems(problems);
+				} else if (request instanceof Protocol.FeaturesRequest f) {
+					json = Protocol.features(
+							FeatureEdits.features(workspace.load(f.file()), f.diagramType(), f.block()));
 				} else if (request instanceof Protocol.GenerateCRequest generate) {
 					// Not shown either: the C view shows the file's code beside the diagram.
 					json = Protocol.cCode(generate.variant(),
@@ -152,6 +155,9 @@ public final class DiagramSocket implements Session.Listener.AutoDemanding {
 			case Protocol.SetTextRequest r -> setText(file, r);
 			case Protocol.CheckTextRequest r -> throw new IllegalStateException("handled above");
 			case Protocol.GenerateCRequest r -> throw new IllegalStateException("handled above");
+			case Protocol.FeaturesRequest r -> throw new IllegalStateException("handled above");
+			case Protocol.SetFeaturesRequest r -> save(file, r.diagramType(),
+					FeatureEdits.setFeatures(file, r.diagramType(), r.block(), r.features()));
 			case Protocol.MoveRequest move ->
 				save(file, move.diagramType(), DiagramEdits.moveNodes(file, move.diagramType(), move.moves()));
 			case Protocol.ConnectRequest connect -> save(file, connect.diagramType(),

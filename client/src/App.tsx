@@ -62,6 +62,7 @@ export function App() {
     diagram,
     editable,
     send,
+    request: server.request,
     literalConnections: flow.literalConnections,
     setError: server.setError,
   });
@@ -126,6 +127,28 @@ export function App() {
   const [fittedKey, setFittedKey] = useState<string | null>(null);
   const onFitted = useCallback(() => setFittedKey(diagramKey), [diagramKey]);
 
+  // Adding a block from the palette. If its type has optional features, ask
+  // whether to select them (as the old editor did).
+  const { askFeatures } = dialogs;
+  const addBlock = useCallback(
+    async (typeName: string, x: number, y: number, screen: { x: number; y: number }) => {
+      if (!diagram?.diagramType) return;
+      const before = new Set(diagram.nodes.map((n) => n.id));
+      const answer = await server.request({
+        type: 'addBlock',
+        file: diagram.file,
+        diagramType: diagram.diagramType,
+        typeName,
+        x,
+        y,
+      });
+      if (answer.type !== 'diagram') return;
+      const added = answer.nodes.find((n) => n.kind === 'block' && !before.has(n.id) && n.featureBase);
+      if (added?.featureBase) askFeatures(added.id, added.featureBase, screen);
+    },
+    [diagram, server.request, askFeatures],
+  );
+
   // The right-click menus.
   const menuContext = useMemo<MenuContext | null>(
     () =>
@@ -149,6 +172,7 @@ export function App() {
         newSubtype: dialogs.newSubtype,
         editSuperTypes: dialogs.editSuperTypes,
         editParameters: dialogs.editParameters,
+        editFeatures: dialogs.editFeatures,
         // Answered with the shown type, or the first one if the shown one was deleted.
         intercept: dialogs.intercept,
         deleteType: (typeName) =>
@@ -374,7 +398,7 @@ export function App() {
                 onConnect={flow.onConnect}
                 isValidConnection={flow.isValidConnection}
                 onDelete={flow.onDelete}
-                onAddBlock={flow.addBlock}
+                onAddBlock={addBlock}
                 onTool={dialogs.onTool}
                 onNodeContextMenu={onNodeContextMenu}
                 onEdgeContextMenu={onEdgeContextMenu}

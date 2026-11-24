@@ -120,7 +120,7 @@ public final class DiagramEdits {
 	}
 
 	/** The type's annotation entries, keyed by their text without whitespace (e.g. "P::K"). */
-	private static TreeMap<String, Layout.Rect> annotations(SourceText source, DiagramType dt) {
+	static TreeMap<String, Layout.Rect> annotations(SourceText source, DiagramType dt) {
 		TreeMap<String, Layout.Rect> entries = new TreeMap<>();
 		for (Annotation a : dt.getAnnotations()) {
 			String key = source.text(a.getVarUse()).replaceAll("\\s+", "");
@@ -135,7 +135,7 @@ public final class DiagramEdits {
 	 * replaced, or inserted after the type's closing brace (before any
 	 * {@code wiring}), or removed with its line(s) if there are no entries.
 	 */
-	private static TextEdit annotationEdit(SourceText source, DiagramType dt, TreeMap<String, Layout.Rect> entries) {
+	static TextEdit annotationEdit(SourceText source, DiagramType dt, TreeMap<String, Layout.Rect> entries) {
 		String nl = source.lineSeparator();
 		StringJoiner block = new StringJoiner("," + nl, "annotation(" + nl, nl + ")");
 		entries.forEach((key, r) -> block.add(
@@ -1337,7 +1337,7 @@ public final class DiagramEdits {
 	}
 
 	/** Offset just after the ';' that ends a statement whose node ends at {@code end}. */
-	private static int semicolonAfter(String text, int end, int limit) {
+	static int semicolonAfter(String text, int end, int limit) {
 		if (end > 0 && text.charAt(end - 1) == ';') {
 			return end;
 		}
@@ -1349,7 +1349,7 @@ public final class DiagramEdits {
 	 * The range to delete for a statement at [start, end): its whole line(s) if
 	 * nothing else is on them, otherwise just the statement and the spaces after it.
 	 */
-	private static int[] statementLines(SourceText source, int start, int end) {
+	static int[] statementLines(SourceText source, int start, int end) {
 		String text = source.text();
 		int lineStart = start;
 		while (lineStart > 0 && text.charAt(lineStart - 1) != '\n' && text.charAt(lineStart - 1) != '\r') {
@@ -1441,14 +1441,14 @@ public final class DiagramEdits {
 		return null;
 	}
 
-	private static void requireEditable(LoadedFile file) {
+	static void requireEditable(LoadedFile file) {
 		String reason = readOnlyReason(file);
 		if (reason != null) {
 			throw new IllegalArgumentException(reason);
 		}
 	}
 
-	private static DiagramType topLevelDiagramType(LoadedFile file, String name) {
+	static DiagramType topLevelDiagramType(LoadedFile file, String name) {
 		for (TypeDecl td : file.compilationUnit().typeDecls()) {
 			if (td.isDiagramType() && td.name().equals(name)) {
 				return (DiagramType) td;

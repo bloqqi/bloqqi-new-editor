@@ -120,6 +120,24 @@
 - Client: lists of types and files are shown sorted by name (`names.ts`:
   case-insensitive, numbers by value); the server sends them in file order.
   A type's super types keep their written order, since it matters.
+- Features (`FeatureEdits.java`, block menu "Features…", `FeaturesForm.tsx`): a
+  block whose type, or whose anonymous type's first super type, declares
+  `features B {...}` has `featureBase` set. `features` (a query) lists the
+  options (`DiagramType.featureSelection(...)`: name, implementing type,
+  selected, excludes, before); `setFeatures` writes exactly the given ones as
+  `b: B { feature f; ... };`, ordered as the compiler orders them (`before`,
+  ties by name, read from `FeatureSelection.newAnonymousBlock`), keeping other
+  statements in the braces; none and nothing else gives `b: B;`. Connections
+  of the type on ports that disappear are deleted in the same edit, and if the
+  number of ports on a side changes, the block's stored height is set to fit
+  them (`Layout.minHeight`). (Drawing never makes a block shorter than its
+  ports need, whatever its stored height, `Layout.layout`.) The form
+  unselects excluded features when one is checked and previews the order
+  (`featureOrder`, mirroring the compiler). Dropping a block of such a type
+  asks whether to select its features (`FeaturesQuestion`, after the
+  `addBlock` answer shows a new block with `featureBase`; "No" leaves a plain
+  block, and the two are separate undo steps). The `recommendation` mechanism is
+  deliberately not carried over.
 - Navigation (`useServer`): opening another file or type at the user's request
   (RequestKind `navigate`: the file and type selects, "Open <Type>") pushes an
   entry onto the browser's history; everything else replaces the current one.

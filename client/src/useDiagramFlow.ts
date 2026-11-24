@@ -37,7 +37,6 @@ export interface DiagramFlow {
   deleteItems: (items: { edges?: string[]; nodes?: string[] }) => void;
   /** Delete/Backspace on the selection. */
   onDelete: (selection: { nodes: DiagramFlowNode[]; edges: FlowEdgeType[] }) => void;
-  addBlock: (typeName: string, x: number, y: number) => void;
   /** Literal id -> the deletable connection it feeds. */
   literalConnections: Map<string, string>;
 }
@@ -169,15 +168,6 @@ export function useDiagramFlow(diagram: DiagramMessage | null, send: (message: C
     [literalConnections, deleteItems],
   );
 
-  const addBlock = useCallback(
-    (typeName: string, x: number, y: number) => {
-      if (diagram?.diagramType) {
-        send({ type: 'addBlock', file: diagram.file, diagramType: diagram.diagramType, typeName, x, y });
-      }
-    },
-    [diagram, send],
-  );
-
   return {
     nodes,
     edges,
@@ -188,7 +178,6 @@ export function useDiagramFlow(diagram: DiagramMessage | null, send: (message: C
     onConnect,
     deleteItems,
     onDelete,
-    addBlock,
     literalConnections,
   };
 }
