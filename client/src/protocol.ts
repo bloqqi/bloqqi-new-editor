@@ -106,6 +106,8 @@ export interface DiagramMessage {
   palette: PaletteEntry[];
   /** The names in the shown type's `extends` clause. */
   superTypes: string[];
+  /** The file's text the diagram was built from (shown in the text view). */
+  text: string;
 }
 
 /** The text of a file before and after a change. */
@@ -117,6 +119,12 @@ export interface Change {
 export interface ErrorMessage {
   type: 'error';
   message: string;
+}
+
+/** The answer to checkText: the problems the text would have. */
+export interface ProblemsMessage {
+  type: 'problems';
+  problems: Problem[];
 }
 
 /** Pushed (not an answer): the shown file changed on disk (another tab, a text editor). */
@@ -140,6 +148,7 @@ export type ServerMessage =
   | WorkspaceMessage
   | DiagramMessage
   | ErrorMessage
+  | ProblemsMessage
   | UpdateMessage
   | FilesMessage
   | NoticeMessage;
@@ -378,6 +387,26 @@ export interface InterceptRequest {
   outOf: Endpoint;
 }
 
+/**
+ * The text view's save: write `text` if the file still is `expected` (the text
+ * it was loaded from). The text may have errors. Answered like an edit; the
+ * diagram is of `diagramType`, or of the file's first type if it is gone.
+ */
+export interface SetTextRequest {
+  type: 'setText';
+  file: string;
+  diagramType: string | null;
+  text: string;
+  expected: string;
+}
+
+/** The problems `text` would have, answered with a "problems" message; nothing is written. */
+export interface CheckTextRequest {
+  type: 'checkText';
+  file: string;
+  text: string;
+}
+
 export type ClientMessage =
   | OpenRequest
   | MoveRequest
@@ -401,7 +430,9 @@ export type ClientMessage =
   | RenameFileRequest
   | DeleteFileRequest
   | InterceptRequest
-  | RestoreRequest;
+  | RestoreRequest
+  | SetTextRequest
+  | CheckTextRequest;
 
 export function webSocketUrl(): string {
   const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';

@@ -3,26 +3,50 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { UndoHistory } from './history';
-import { webSocketUrl, type ClientMessage, type DiagramMessage, type ServerMessage } from './protocol';
+import {
+  webSocketUrl,
+  type ClientMessage,
+  type DiagramMessage,
+  type ErrorMessage,
+  type ProblemsMessage,
+  type ServerMessage,
+} from './protocol';
 
 export type Status = 'connecting' | 'open' | 'reconnecting';
 
 /**
  * What a request was for. The server answers requests in order, so a queue of
- * these tells what each answer ("diagram" or "error") belongs to. A "form"
- * request is an edit submitted from a form, which is told the outcome.
+ * these tells what each answer ("diagram", "problems" or "error") belongs to.
+ * A "form" request is an edit submitted from a form, which is told the
+ * outcome; a "check" request asks for the problems of the text view's text
+ * (it does not count as pending: nothing waits for it).
  */
-export type RequestKind = 'open' | 'edit' | 'form' | 'undo' | 'redo';
+export type RequestKind = 'open' | 'edit' | 'form' | 'undo' | 'redo' | 'check';
+
+/** An answer to a request. */
+export type Answer = DiagramMessage | ProblemsMessage | ErrorMessage;
+
+interface Pending {
+  kind: RequestKind;
+  file: string;
+  /** Told the answer (or an error if the connection is lost first). */
+  resolve?: (answer: Answer) => void;
+}
+
+const defaultKind = (message: ClientMessage): RequestKind =>
+  message.type === 'open' ? 'open' : message.type === 'checkText' ? 'check' : 'edit';
 
 /** Delay before reconnecting after the connection drops: doubles up to the maximum. */
 const RECONNECT_MIN_MS = 500;
 const RECONNECT_MAX_MS = 10_000;
 
-/** Keeps ?file=…&type=… in the address bar so a view can be reloaded or linked. */
+/** Keeps ?file=…&type=…(&view=text) in the address bar so a view can be reloaded or linked. */
 function updateUrl(file: string, diagramType: string | null) {
+  const view = new URLSearchParams(window.location.search).get('view');
   const params = new URLSearchParams();
   params.set('file', file);
   if (diagramType) params.set('type', diagramType);
+  if (view) params.set('view', view);
   window.history.replaceState(null, '', `?${params}`);
 }
 
@@ -37,8 +61,10 @@ export interface Server {
   notice: string | null;
   setError: (error: string | null) => void;
   send: (message: ClientMessage, kind?: RequestKind) => void;
+  /** Sends a request and resolves with its answer. */
+  request: (message: ClientMessage, kind?: RequestKind) => Promise<Answer>;
   open: (file: string, diagramType?: string) => void;
-  /** Requests sent but not yet answered. */
+  /** Requests sent but not yet answered (not counting checks). */
   pendingCount: number;
   canUndo: boolean;
   canRedo: boolean;
@@ -66,30 +92,54 @@ export function useServer(onFormAnswered: (error: string | null) => void): Serve
 
   const history = useRef(new UndoHistory());
   const [, historyChanged] = useReducer((n: number) => n + 1, 0);
-  const pending = useRef<{ kind: RequestKind; file: string }[]>([]);
+  const pending = useRef<Pending[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
+  const countPending = useCallback(
+    () => setPendingCount(pending.current.filter((p) => p.kind !== 'check').length),
+    [],
+  );
   const formAnswered = useRef(onFormAnswered);
   formAnswered.current = onFormAnswered;
 
-  const sendRaw = useCallback((ws: WebSocket, message: ClientMessage, kind: RequestKind) => {
-    pending.current.push({ kind, file: message.file });
-    setPendingCount(pending.current.length);
-    ws.send(JSON.stringify(message));
-  }, []);
+  const sendRaw = useCallback(
+    (ws: WebSocket, message: ClientMessage, kind: RequestKind, resolve?: (answer: Answer) => void) => {
+      pending.current.push({ kind, file: message.file, resolve });
+      countPending();
+      ws.send(JSON.stringify(message));
+    },
+    [countPending],
+  );
 
   const send = useCallback(
-    (message: ClientMessage, kind: RequestKind = message.type === 'open' ? 'open' : 'edit') => {
+    (message: ClientMessage, kind: RequestKind = defaultKind(message)) => {
       if (socket.current) sendRaw(socket.current, message, kind);
     },
+    [sendRaw],
+  );
+
+  const request = useCallback(
+    (message: ClientMessage, kind: RequestKind = defaultKind(message)) =>
+      new Promise<Answer>((resolve) => {
+        if (socket.current) sendRaw(socket.current, message, kind, resolve);
+        else resolve({ type: 'error', message: 'Not connected' });
+      }),
     [sendRaw],
   );
 
   /** The request that the next answer from the server belongs to. */
   const answered = useCallback(() => {
     const request = pending.current.shift();
-    setPendingCount(pending.current.length);
+    countPending();
     return request;
-  }, []);
+  }, [countPending]);
+
+  /** Requests sent on a connection that is gone will not be answered. */
+  const dropPending = useCallback(() => {
+    const dropped = pending.current;
+    pending.current = [];
+    countPending();
+    for (const p of dropped) p.resolve?.({ type: 'error', message: 'The connection was lost' });
+  }, [countPending]);
 
   const open = useCallback(
     (file: string, diagramType?: string) => send({ type: 'open', file, diagramType }),
@@ -117,8 +167,7 @@ export function useServer(onFormAnswered: (error: string | null) => void): Serve
       ws = current;
       socket.current = current;
       // Requests sent on an earlier connection will not be answered.
-      pending.current = [];
-      setPendingCount(0);
+      dropPending();
       current.onopen = () => {
         delay = RECONNECT_MIN_MS;
         setStatus('open');
@@ -157,8 +206,12 @@ export function useServer(onFormAnswered: (error: string | null) => void): Serve
             setDiagram(message);
             setError(null);
             updateUrl(message.file, message.diagramType);
+            request?.resolve?.(message);
             break;
           }
+          case 'problems':
+            answered()?.resolve?.(message);
+            break;
           // Pushed by the server, not answers: they leave the request queue alone.
           case 'update': {
             // The shown file changed on disk; the history no longer matches it.
@@ -177,6 +230,8 @@ export function useServer(onFormAnswered: (error: string | null) => void): Serve
             break;
           case 'error': {
             const request = answered();
+            request?.resolve?.(message);
+            if (request?.kind === 'check') break;
             if (request && (request.kind === 'undo' || request.kind === 'redo')) {
               // The file no longer is what the history expects (changed elsewhere).
               history.current.clear(request.file);
@@ -204,13 +259,13 @@ export function useServer(onFormAnswered: (error: string | null) => void): Serve
     window.addEventListener('online', reconnectNow);
     return () => {
       stopped = true;
-      pending.current = [];
+      dropPending();
       window.clearTimeout(retryTimer);
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('online', reconnectNow);
       ws?.close();
     };
-  }, [sendRaw, answered, showNotice]);
+  }, [sendRaw, answered, dropPending, showNotice]);
 
   // Undo/redo of edits in the shown file (see history.ts). Not while a request
   // is on its way: its answer may change the history.
@@ -235,5 +290,20 @@ export function useServer(onFormAnswered: (error: string | null) => void): Serve
     );
   }, [canRedo, diagram, send]);
 
-  return { status, files, diagram, error, notice, setError, send, open, pendingCount, canUndo, canRedo, undo, redo };
+  return {
+    status,
+    files,
+    diagram,
+    error,
+    notice,
+    setError,
+    send,
+    request,
+    open,
+    pendingCount,
+    canUndo,
+    canRedo,
+    undo,
+    redo,
+  };
 }

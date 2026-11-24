@@ -100,6 +100,122 @@ body,
   min-height: 0;
 }
 
+/* The Diagram/Text switch: the shown view's button looks pressed. */
+.toolbar__views button[aria-pressed='true'] {
+  background: var(--local);
+  border: 1px solid var(--local);
+  color: #ffffff;
+}
+
+/* The text view: the whole file in a text editor, with a bar and the problems below. */
+.text-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.text-view {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+}
+
+.text-view__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.text-view__bar button {
+  font: inherit;
+  padding: 2px 10px;
+}
+
+.text-view__file {
+  font-weight: 600;
+}
+
+.text-view__state {
+  color: var(--muted);
+}
+
+.text-view__state--dirty {
+  color: #b45309;
+}
+
+.text-view__spacer {
+  flex: 1;
+}
+
+.text-view__conflict {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.text-view__conflict span {
+  flex: 1;
+}
+
+.text-view__conflict button {
+  font: inherit;
+  padding: 2px 10px;
+}
+
+.text-view__editor {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.text-view__editor .cm-editor {
+  height: 100%;
+  font-size: 13px;
+}
+
+.text-view__editor .cm-editor.cm-focused {
+  outline: none;
+}
+
+.text-view__editor .cm-scroller {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  line-height: 1.5;
+}
+
+.text-view__problems {
+  max-height: 25%;
+  overflow: auto;
+  padding: 4px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.text-view__problems ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.text-view__problems button {
+  font: inherit;
+  color: var(--error);
+  background: none;
+  border: none;
+  padding: 1px 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.text-view__ok {
+  color: var(--muted);
+}
+
 /* Palette: the types a block can be added of; entries are dragged onto the canvas. */
 .palette {
   width: 170px;

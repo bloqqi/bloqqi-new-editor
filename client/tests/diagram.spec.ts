@@ -1112,3 +1112,172 @@ test('the canvas only shows the area where nodes can go, with the same edge ever
   await page.getByRole('button', { name: 'fit view' }).click();
   expect(await strip()).toEqual([16, 16]);
 });
+
+// Text.dia is a copy of TwoCounters.dia that only these tests edit.
+test.describe.serial('text view', () => {
+  const textFile = resolve('..', 'build', 'e2e-workspace', 'Text.dia');
+  const readText = () => readWorkspaceFile('Text.dia');
+  const editor = (page: Page) => page.locator('.cm-content');
+  /** Replaces the editor's whole text, as if typed. */
+  async function setEditorText(page: Page, text: string) {
+    await editor(page).click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.insertText(text);
+  }
+  /** Opens Text.dia in the text view. */
+  async function gotoText(page: Page) {
+    await page.goto('/?file=Text.dia&type=Acc&view=text');
+    await expect(editor(page)).toContainText('diagramtype Acc');
+  }
+  const editorText = (page: Page) =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('.cm-content .cm-line')].map((l) => l.textContent).join('\n'),
+    );
+
+  test('shows the whole file; typing is checked, saving writes it and updates the diagram', async ({ page }) => {
+    const original = readText();
+    await goto(page, '/?file=Text.dia&type=Acc');
+    await page.getByTestId('view-text').click();
+    await expect(page).toHaveURL(/view=text/);
+    await expect(editor(page)).toContainText('diagramtype Main');
+    await expect(editor(page)).toContainText('diagramtype Acc');
+    await expect(page.getByTestId('text-state')).toHaveText('Saved');
+    await expect(page.getByTestId('text-problems')).toHaveText('No problems');
+
+    // A syntax error is reported while typing; nothing is written.
+    const broken = original.replace('connect(in, add.in1);', 'connect(in, add.in1)');
+    await setEditorText(page, broken);
+    await expect(page.getByTestId('text-state')).toHaveText('Unsaved changes');
+    await expect(page.getByTestId('text-problems')).toContainText('Syntax error');
+    await expect(page.locator('.cm-lintRange-error')).not.toHaveCount(0);
+    await expect(page.getByTestId('new')).toBeDisabled(); // save or revert first
+    expect(readText()).toBe(original);
+
+    // Fixed and saved (Ctrl/⌘+S): the file is written, the diagram follows.
+    const renamed = original.replace(/\bstate\b/g, 'total');
+    await setEditorText(page, renamed);
+    await expect(page.getByTestId('text-problems')).toHaveText('No problems');
+    await page.keyboard.press('ControlOrMeta+s');
+    await expect(page.getByTestId('text-state')).toHaveText('Saved');
+    await expect.poll(readText).toBe(renamed);
+
+    await page.getByTestId('view-diagram').click();
+    await expect(page).not.toHaveURL(/view=text/);
+    await expect(node(page, 'total')).toHaveText('var total');
+
+    // The save is one step of the file's undo history; the text view follows.
+    await page.getByTestId('undo').click();
+    await expect(node(page, 'state')).toHaveText('var state');
+    await expect.poll(readText).toBe(original);
+    await page.getByTestId('view-text').click();
+    await expect(editor(page)).toContainText('var state: Int;');
+    await expect(page.getByTestId('text-state')).toHaveText('Saved');
+  });
+
+  test("annotation blocks' contents are greyed out; highlighting resumes after them", async ({ page }) => {
+    await page.goto('/?file=PLib.dia&type=PTrack&view=text');
+    await expect(editor(page)).toContainText('diagramtype PTrack');
+    /** The colour of `text` in the first line that starts with `line`. */
+    const color = (line: string, text: string) =>
+      page.evaluate(
+        ([line, text]) => {
+          const l = [...document.querySelectorAll('.cm-line')].find((e) => e.textContent!.trim().startsWith(line))!;
+          const walker = document.createTreeWalker(l, NodeFilter.SHOW_TEXT);
+          for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+            if (n.textContent!.includes(text)) return getComputedStyle(n.parentElement!).color;
+          }
+          return null;
+        },
+        [line, text],
+      );
+    const grey = 'rgb(154, 154, 160)';
+    const keyword = 'rgb(119, 0, 136)'; // CodeMirror's default style: #708
+    // (The editor highlights in the background, so wait for the colours.)
+    await expect.poll(() => color('diagramtype PTrack', 'diagramtype')).toBe(keyword);
+    // The keyword is coloured like the others; what is in the block is grey.
+    await expect.poll(() => color('annotation(', 'annotation')).toBe(keyword);
+    await expect.poll(() => color('annotation(', '(')).toBe(grey);
+    await expect.poll(() => color('P::K', 'P::K')).toBe(grey);
+    await expect.poll(() => color('P::K', '20')).toBe(grey); // not a green number
+    await expect.poll(() => color('features P', 'features')).toBe(keyword); // after the block
+  });
+
+  test('a file with errors can be saved; its diagram is then read-only', async ({ page }) => {
+    const original = readText();
+    await gotoText(page);
+    await setEditorText(page, original.replace('connect(in, add.in1);', 'connect(in, add.in1)'));
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByTestId('text-state')).toHaveText('Saved');
+    await page.getByTestId('view-diagram').click();
+    await expect(page.getByTestId('read-only')).toBeVisible();
+    await expect(page.getByTestId('problems')).toContainText('Syntax error');
+    // Back to the original text.
+    await page.getByTestId('view-text').click();
+    await setEditorText(page, original);
+    await page.keyboard.press('ControlOrMeta+s');
+    await expect.poll(readText).toBe(original);
+  });
+
+  test('leaving with unsaved changes asks first', async ({ page }) => {
+    const original = readText();
+    await gotoText(page);
+    await setEditorText(page, original + '// a comment\n');
+    await page.getByTestId('view-diagram').click();
+    const form = page.getByTestId('unsaved-text-form');
+    await expect(form).toBeVisible();
+    await form.getByRole('button', { name: 'Cancel' }).click();
+    await expect(form).toHaveCount(0);
+    await expect(page.getByTestId('text-view')).toBeVisible();
+    await expect(editor(page)).toContainText('// a comment');
+
+    // Another file: Discard.
+    await page.getByTestId('file-select').selectOption('TwoCounters.dia');
+    await form.getByRole('button', { name: 'Discard' }).click();
+    await expect(page.getByTestId('file-select')).toHaveValue('TwoCounters.dia');
+    await expect(editor(page)).not.toContainText('// a comment');
+    expect(readText()).toBe(original);
+
+    // Save, then leave.
+    await page.getByTestId('file-select').selectOption('Text.dia');
+    await expect(editor(page)).toContainText('diagramtype Acc');
+    await setEditorText(page, original + '// saved\n');
+    await page.getByTestId('view-diagram').click();
+    await form.getByRole('button', { name: 'Save' }).click();
+    await expect(page.getByTestId('text-view')).toHaveCount(0);
+    await expect.poll(readText).toBe(original + '// saved\n');
+    await page.getByTestId('view-text').click();
+    await setEditorText(page, original);
+    await page.keyboard.press('ControlOrMeta+s');
+    await expect.poll(readText).toBe(original);
+  });
+
+  test('a change made elsewhere: reloaded, or offered while there are unsaved changes', async ({ page }) => {
+    const original = readText();
+    await gotoText(page);
+    await expect(editor(page)).toContainText('diagramtype Acc');
+
+    // No unsaved changes: the editor takes the new text.
+    writeFileSync(textFile, original + '// outside 1\n');
+    await expect(editor(page)).toContainText('// outside 1');
+    await expect(page.getByTestId('text-state')).toHaveText('Saved');
+
+    // Unsaved changes: a banner offers to reload.
+    await setEditorText(page, original + '// mine\n');
+    writeFileSync(textFile, original + '// outside 2\n');
+    const conflict = page.getByTestId('text-conflict');
+    await expect(conflict).toBeVisible();
+    expect(await editorText(page)).toContain('// mine');
+    await conflict.getByRole('button', { name: 'Reload (discard mine)' }).click();
+    await expect(conflict).toHaveCount(0);
+    await expect(editor(page)).toContainText('// outside 2');
+    await expect(editor(page)).not.toContainText('// mine');
+
+    // Or keep them: saving then overwrites the other change.
+    await setEditorText(page, original);
+    writeFileSync(textFile, original + '// outside 3\n');
+    await conflict.getByRole('button', { name: 'Keep mine' }).click();
+    await page.keyboard.press('ControlOrMeta+s');
+    await expect.poll(readText).toBe(original);
+    await expect(page.getByTestId('text-state')).toHaveText('Saved');
+  });
+});

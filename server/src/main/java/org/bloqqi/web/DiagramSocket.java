@@ -87,9 +87,17 @@ public final class DiagramSocket implements Session.Listener.AutoDemanding {
 			}
 			String json;
 			synchronized (BloqqiLoader.COMPILER_LOCK) {
-				Answer answer = handle(request);
-				view = new View(answer.diagram().file(), answer.diagram().diagramType(), answer.text());
-				json = Protocol.diagram(answer.diagram(), answer.change());
+				if (request instanceof Protocol.CheckTextRequest check) {
+					// Not shown, so the view stays as it is.
+					LoadedFile checked = BloqqiLoader.load(check.file(), check.text());
+					List<Problem> problems = new java.util.ArrayList<>(checked.syntaxErrors());
+					problems.addAll(checked.semanticErrors());
+					json = Protocol.problems(problems);
+				} else {
+					Answer answer = handle(request);
+					view = new View(answer.diagram().file(), answer.diagram().diagramType(), answer.text());
+					json = Protocol.diagram(answer.diagram(), answer.change(), answer.text());
+				}
 			}
 			send(json);
 		} catch (IllegalArgumentException | IllegalStateException e) {
@@ -137,6 +145,8 @@ public final class DiagramSocket implements Session.Listener.AutoDemanding {
 			case Protocol.OpenRequest open ->
 				new Answer(DiagramBuilder.build(file, open.diagramType()), null, file.source());
 			case Protocol.RestoreRequest restore -> restore(file, restore);
+			case Protocol.SetTextRequest r -> setText(file, r);
+			case Protocol.CheckTextRequest r -> throw new IllegalStateException("handled above");
 			case Protocol.MoveRequest move ->
 				save(file, move.diagramType(), DiagramEdits.moveNodes(file, move.diagramType(), move.moves()));
 			case Protocol.ConnectRequest connect -> save(file, connect.diagramType(),
@@ -237,6 +247,25 @@ public final class DiagramSocket implements Session.Listener.AutoDemanding {
 	}
 
 	/**
+	 * The text view's save: writes the text if the file has not changed since
+	 * the client loaded it. Unlike the diagram's edits, the text is not checked:
+	 * it may have errors (then the diagram is read-only and lists them). If the
+	 * shown diagram type is no longer in it, the first one is shown.
+	 */
+	private Answer setText(LoadedFile file, Protocol.SetTextRequest r) throws IOException {
+		if (!file.source().equals(r.expected())) {
+			throw new IllegalArgumentException(file.fileName()
+					+ " has been changed since the text was loaded (in another editor or tab), so it was not saved");
+		}
+		if (r.text().equals(file.source())) {
+			return new Answer(buildOrFirst(file, r.diagramType()), null, file.source());
+		}
+		Diagram d = buildOrFirst(BloqqiLoader.load(file.fileName(), r.text()), r.diagramType());
+		String before = workspace.replace(file.fileName(), r.expected(), r.text());
+		return new Answer(d, new Protocol.Change(before, r.text()), r.text());
+	}
+
+	/**
 	 * A workspace file changed on disk. If the client shows it and its text is
 	 * not what the client was sent, push the new diagram ("update"), of the same
 	 * type if it still exists. If the file is gone, say so ("notice").
@@ -266,7 +295,7 @@ public final class DiagramSocket implements Session.Listener.AutoDemanding {
 				d = DiagramBuilder.build(file, null);
 			}
 			view = new View(v.file(), d.diagramType(), file.source());
-			json = Protocol.update(d);
+			json = Protocol.update(d, file.source());
 		}
 		send(json);
 	}

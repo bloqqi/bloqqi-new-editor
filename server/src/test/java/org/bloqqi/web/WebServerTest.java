@@ -67,12 +67,12 @@ public class WebServerTest {
 			return text == null ? null : new JsonParser().parse(text).getAsJsonObject();
 		}
 
-		/** The next answer ("diagram" or "error"), skipping pushed messages. */
+		/** The next answer ("diagram", "problems" or "error"), skipping pushed messages. */
 		JsonObject answer() throws InterruptedException {
 			while (true) {
 				JsonObject m = next();
 				String type = m.get("type").getAsString();
-				if (type.equals("diagram") || type.equals("error")) {
+				if (type.equals("diagram") || type.equals("problems") || type.equals("error")) {
 					return m;
 				}
 			}
@@ -383,6 +383,76 @@ public class WebServerTest {
 		o.addProperty("text", text);
 		o.addProperty("expected", expected);
 		return o.toString();
+	}
+
+	private static String setText(String diagramType, String text, String expected) {
+		JsonObject o = new JsonObject();
+		o.addProperty("type", "setText");
+		o.addProperty("file", "TwoCounters.dia");
+		o.addProperty("diagramType", diagramType);
+		o.addProperty("text", text);
+		o.addProperty("expected", expected);
+		return o.toString();
+	}
+
+	private static String checkText(String text) {
+		JsonObject o = new JsonObject();
+		o.addProperty("type", "checkText");
+		o.addProperty("file", "TwoCounters.dia");
+		o.addProperty("text", text);
+		return o.toString();
+	}
+
+	/** The text view: diagrams carry the file's text, which can be checked and saved. */
+	@Test
+	public void theTextViewChecksAndSavesTheWholeFile() throws Exception {
+		Path file = watchedWorkspace().resolve("TwoCounters.dia");
+		String original = Files.readString(file);
+		Client c = new Client();
+		c.next(); // workspace
+		c.open("TwoCounters.dia", "Acc");
+		JsonObject opened = c.answer();
+		assertEquals(original, opened.get("text").getAsString());
+
+		// Checking reports the problems of the text, and writes nothing.
+		String broken = original.replace("connect(in, add.in1);", "connect(in, add.in1)");
+		c.socket.sendText(checkText(broken), true);
+		JsonObject problems = c.answer();
+		assertEquals("problems", problems.get("type").getAsString());
+		assertTrue(problems.getAsJsonArray("problems").size() > 0);
+		c.socket.sendText(checkText(original), true);
+		assertEquals(0, c.answer().getAsJsonArray("problems").size());
+		assertEquals(original, Files.readString(file));
+
+		// Saving writes the text, even with errors, and answers with the diagram and the change.
+		String renamed = original.replace("var state: Int;", "var total: Int;").replace("state", "total");
+		c.socket.sendText(setText("Acc", renamed, original), true);
+		JsonObject saved = c.answer();
+		assertEquals(saved.toString(), "diagram", saved.get("type").getAsString());
+		assertEquals(renamed, Files.readString(file));
+		assertEquals(renamed, saved.get("text").getAsString());
+		assertEquals(original, saved.getAsJsonObject("change").get("before").getAsString());
+		assertTrue(saved.toString(), saved.toString().contains("\"id\":\"total\""));
+
+		c.socket.sendText(setText("Acc", broken, renamed), true);
+		JsonObject withErrors = c.answer();
+		assertEquals("diagram", withErrors.get("type").getAsString());
+		assertTrue("read-only", !withErrors.get("readOnly").isJsonNull());
+		assertEquals(broken, Files.readString(file));
+
+		// A deleted shown type: the first type is shown.
+		String withoutAcc = "diagramtype Main {\n}\n";
+		c.socket.sendText(setText("Acc", withoutAcc, broken), true);
+		JsonObject first = c.answer();
+		assertEquals("Main", first.get("diagramType").getAsString());
+
+		// Changed elsewhere since the text was loaded: refused, the file is left alone.
+		Files.writeString(file, original);
+		c.socket.sendText(setText("Main", renamed, withoutAcc), true);
+		JsonObject refused = c.answer();
+		assertEquals("error", refused.get("type").getAsString());
+		assertTrue(refused.get("message").getAsString(), refused.get("message").getAsString().contains("has been changed since"));
+		assertEquals(original, Files.readString(file));
 	}
 
 	@Test

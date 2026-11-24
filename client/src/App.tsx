@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react';
 import { Canvas } from './Canvas';
 import { Dialogs } from './Dialogs';
 import { EditingContext, type Editing } from './editing';
@@ -10,18 +10,36 @@ import { InterceptMode } from './InterceptMode';
 import { handleInfo } from './connections';
 import { Palette } from './Palette';
 import { useRenameKey, useUndoRedoKeys } from './shortcuts';
-import { Toolbar } from './Toolbar';
+import type { TextViewHandle } from './TextView';
+import { Toolbar, type ViewMode } from './Toolbar';
+import { UnsavedTextForm } from './UnsavedTextForm';
 import { useDiagramFlow } from './useDiagramFlow';
 import { useDialogs } from './useDialogs';
 import { useServer } from './useServer';
 
+/** The text view, with its editor (CodeMirror), is loaded when it is first shown. */
+const TextView = lazy(() => import('./TextView').then((m) => ({ default: m.TextView })));
+
+/** The view mode in the address bar (`view=text`), so that a reload keeps it. */
+function urlView(): ViewMode {
+  return new URLSearchParams(window.location.search).get('view') === 'text' ? 'text' : 'diagram';
+}
+
+function setUrlView(view: ViewMode) {
+  const params = new URLSearchParams(window.location.search);
+  if (view === 'text') params.set('view', 'text');
+  else params.delete('view');
+  window.history.replaceState(null, '', `?${params}`);
+}
+
 /**
  * The editor: the toolbar, the palette, the canvas with its menus and forms,
- * and the problems of the file. The parts:
+ * and the problems of the file; or, in the text view, the file's text. The parts:
  * - useServer: the WebSocket, the shown diagram, undo/redo
  * - useDiagramFlow: the canvas' nodes and edges, and edits made on it directly
  * - useDialogs (rendered by Dialogs): the menu and the forms
  * - menus: what the menus offer
+ * - TextView: the whole file in a text editor, saved explicitly
  */
 export function App() {
   // The server tells the open form whether its submission was accepted; the
@@ -45,7 +63,29 @@ export function App() {
   });
   formAnswered.current = dialogs.formAnswered;
 
-  useUndoRedoKeys(server.undo, server.redo);
+  // The text view. Leaving it (to the diagram or another file) with unsaved
+  // changes first asks whether to save or discard them.
+  const [view, setView] = useState<ViewMode>(urlView);
+  const textView = useRef<TextViewHandle>(null);
+  const [textDirty, setTextDirty] = useState(false);
+  const [leaving, setLeaving] = useState<(() => void) | null>(null);
+  const [savingToLeave, setSavingToLeave] = useState(false);
+  const changeView = useCallback((next: ViewMode) => {
+    setView(next);
+    setUrlView(next);
+  }, []);
+  const unlessUnsaved = useCallback(
+    (action: () => void) => {
+      if (view === 'text' && textDirty) setLeaving(() => action);
+      else action();
+    },
+    [view, textDirty],
+  );
+
+  // File undo/redo, not while the text has unsaved changes (the editor has its own).
+  const undo = useCallback(() => !textDirty && server.undo(), [textDirty, server.undo]);
+  const redo = useCallback(() => !textDirty && server.redo(), [textDirty, server.redo]);
+  useUndoRedoKeys(undo, redo);
   useRenameKey(flow.nodes, dialogs.editNode);
 
   // Which diagram (file/type) has had its initial fit; the canvas exposes it as
@@ -65,7 +105,12 @@ export function App() {
         deleteItems: flow.deleteItems,
         open,
         autoLayout: () => {
-          if (diagram.diagramType) send({ type: 'autoLayout', file: diagram.file, diagramType: diagram.diagramType });
+          if (diagram.diagramType)
+            send({
+              type: 'autoLayout',
+              file: diagram.file,
+              diagramType: diagram.diagramType,
+            });
         },
         fileEditable,
         renameType: dialogs.renameType,
@@ -75,7 +120,12 @@ export function App() {
         // Answered with the shown type, or the first one if the shown one was deleted.
         intercept: dialogs.intercept,
         deleteType: (typeName) =>
-          send({ type: 'deleteType', file: diagram.file, diagramType: diagram.diagramType, typeName }),
+          send({
+            type: 'deleteType',
+            file: diagram.file,
+            diagramType: diagram.diagramType,
+            typeName,
+          }),
       },
     [diagram, editable, fileEditable, flow.literalConnections, flow.deleteItems, dialogs, open, send],
   );
@@ -165,7 +215,11 @@ export function App() {
       deleteItems: flow.deleteItems,
       literalConnection: (literalId) => flow.literalConnections.get(literalId) ?? null,
       draggingLiteral: dialogs.draggingLiteral,
-      interceptPick: pick && { phase: pick.into ? 'output' : 'input', typeName: pickType, into: pick.into },
+      interceptPick: pick && {
+        phase: pick.into ? 'output' : 'input',
+        typeName: pickType,
+        into: pick.into,
+      },
       pickPort: dialogs.pickPort,
     }),
     [editable, flow.deleteItems, flow.literalConnections, dialogs.draggingLiteral, pick, pickType, dialogs.pickPort],
@@ -173,7 +227,35 @@ export function App() {
 
   return (
     <div className="app">
-      <Toolbar server={server} fileEditable={fileEditable} onNew={onNew} onFileMenu={onFileMenu} />
+      <Toolbar
+        server={server}
+        fileEditable={fileEditable}
+        view={view}
+        textDirty={textDirty}
+        onView={(next) => next !== view && unlessUnsaved(() => changeView(next))}
+        onOpenFile={(file) => unlessUnsaved(() => open(file))}
+        onNew={onNew}
+        onFileMenu={onFileMenu}
+      />
+      {leaving && diagram && (
+        <UnsavedTextForm
+          file={diagram.file}
+          busy={savingToLeave}
+          onSave={async () => {
+            setSavingToLeave(true);
+            const saved = (await textView.current?.save()) ?? true;
+            setSavingToLeave(false);
+            setLeaving(null);
+            if (saved) leaving();
+          }}
+          onDiscard={() => {
+            setLeaving(null);
+            setTextDirty(false);
+            leaving();
+          }}
+          onCancel={() => setLeaving(null)}
+        />
+      )}
 
       {server.error && (
         <div className="banner banner--error" role="alert">
@@ -188,56 +270,78 @@ export function App() {
       {pick && pickEdge && (
         <InterceptMode edge={pickEdge} atSource={pick.atSource} into={pick.into} onCancel={dialogs.cancelIntercept} />
       )}
-      {diagram?.diagramType && diagram.readOnly && (
+      {view === 'diagram' && diagram?.diagramType && diagram.readOnly && (
         <div className="banner banner--info" data-testid="read-only">
           Read-only: {diagram.readOnly}
         </div>
       )}
 
-      <div className="workarea">
-        {diagram?.diagramType && (
-          <Palette
-            entries={diagram.palette}
-            editable={editable}
-            onDragTool={(tool) => dialogs.setDraggingLiteral(tool === 'literal')}
-            onEntryContextMenu={onPaletteContextMenu}
-          />
-        )}
-        <main className="canvas" data-fitted={fittedKey === diagramKey}>
-          {diagram && !diagram.diagramType && (
-            <p className="empty">
-              {diagram.problems.length > 0
-                ? `${diagram.file} could not be parsed.`
-                : `${diagram.file} has no diagram types.`}
-            </p>
-          )}
-          <EditingContext.Provider value={editing}>
-            <Canvas
-              key={diagramKey}
-              diagram={diagram}
-              nodes={flow.nodes}
-              edges={flow.edges}
+      {view === 'text' && diagram && (
+        <div className="workarea">
+          <main className="text-main">
+            <Suspense fallback={<p className="empty">Loading the text editor…</p>}>
+              <TextView
+                key={diagram.file}
+                ref={textView}
+                file={diagram.file}
+                text={diagram.text}
+                diagramType={diagram.diagramType}
+                problems={diagram.problems}
+                editable={status === 'open'}
+                request={server.request}
+                onDirtyChange={setTextDirty}
+              />
+            </Suspense>
+          </main>
+          <Dialogs dialogs={dialogs} diagram={diagram} busy={server.pendingCount > 0} />
+        </div>
+      )}
+      {view === 'diagram' && (
+        <div className="workarea">
+          {diagram?.diagramType && (
+            <Palette
+              entries={diagram.palette}
               editable={editable}
-              onNodesChange={flow.onNodesChange}
-              onEdgesChange={flow.onEdgesChange}
-              onNodeDragStop={flow.onNodeDragStop}
-              onConnect={flow.onConnect}
-              isValidConnection={flow.isValidConnection}
-              onDelete={flow.onDelete}
-              onAddBlock={flow.addBlock}
-              onTool={dialogs.onTool}
-              onNodeContextMenu={onNodeContextMenu}
-              onEdgeContextMenu={onEdgeContextMenu}
-              onPaneContextMenu={onPaneContextMenu}
-              onNodeDoubleClick={onNodeDoubleClick}
-              onFitted={onFitted}
+              onDragTool={(tool) => dialogs.setDraggingLiteral(tool === 'literal')}
+              onEntryContextMenu={onPaletteContextMenu}
             />
-          </EditingContext.Provider>
-        </main>
-        <Dialogs dialogs={dialogs} diagram={diagram} busy={server.pendingCount > 0} />
-      </div>
+          )}
+          <main className="canvas" data-fitted={fittedKey === diagramKey}>
+            {diagram && !diagram.diagramType && (
+              <p className="empty">
+                {diagram.problems.length > 0
+                  ? `${diagram.file} could not be parsed.`
+                  : `${diagram.file} has no diagram types.`}
+              </p>
+            )}
+            <EditingContext.Provider value={editing}>
+              <Canvas
+                key={diagramKey}
+                diagram={diagram}
+                nodes={flow.nodes}
+                edges={flow.edges}
+                editable={editable}
+                onNodesChange={flow.onNodesChange}
+                onEdgesChange={flow.onEdgesChange}
+                onNodeDragStop={flow.onNodeDragStop}
+                onConnect={flow.onConnect}
+                isValidConnection={flow.isValidConnection}
+                onDelete={flow.onDelete}
+                onAddBlock={flow.addBlock}
+                onTool={dialogs.onTool}
+                onNodeContextMenu={onNodeContextMenu}
+                onEdgeContextMenu={onEdgeContextMenu}
+                onPaneContextMenu={onPaneContextMenu}
+                onNodeDoubleClick={onNodeDoubleClick}
+                onFitted={onFitted}
+              />
+            </EditingContext.Provider>
+          </main>
+          <Dialogs dialogs={dialogs} diagram={diagram} busy={server.pendingCount > 0} />
+        </div>
+      )}
 
-      {diagram && diagram.problems.length > 0 && (
+      {view === 'diagram' && diagram && diagram.problems.length > 0 && (
         <section className="problems" data-testid="problems">
           <h2>
             Problems in {diagram.file} ({diagram.problems.length})

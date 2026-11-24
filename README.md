@@ -20,6 +20,8 @@ In the browser you can:
 - create, rename and delete diagram types and external functions, and change
   super types
 - create, rename and delete files
+- switch to the text view to read and edit the whole file, with problems
+  shown as you type
 - undo and redo every edit
 
 Changes made to the file elsewhere, such as in a text editor or another tab,

@@ -54,6 +54,12 @@ import com.google.gson.JsonParser;
  * client -> server  {"type":"restore", "file", "diagramType", "text", "expected"}
  *                   (undo/redo: writes "text" if the file still contains "expected";
  *                    answered with the "diagram" and its "change", or an "error")
+ * client -> server  {"type":"setText", "file", "diagramType", "text", "expected"}
+ *                   (the text view's save: like restore, but the text may have errors;
+ *                    the diagram is of "diagramType", or of the first type if it is gone)
+ * client -> server  {"type":"checkText", "file", "text"}
+ *                   (answered with {"type":"problems", "problems":[{line,column,message}]}
+ *                    for that text; nothing is written)
  * server -> client  {"type":"diagram", "file", "diagramType", "diagramTypes":[...],
  *                    "nodes":[{id,kind,label,typeName,inherited,inlined,error,x,y,width,height,
  *                              inPorts:[{name,typeName,y,connectable}], outPorts:[...],
@@ -63,6 +69,7 @@ import com.google.gson.JsonParser;
  *                    "problems":[{line,column,message}],
  *                    "readOnly": null or why the diagram cannot be edited,
  *                    "palette":[{name,group,kind,doc}], "superTypes":[...],
+ *                    "text": the file's text the diagram was built from,
  *                    "change": null, or {before, after} if the request changed the file}
  * server -> client  {"type":"error", "message"}
  *
@@ -89,7 +96,7 @@ final class Protocol {
 			AddDiagramTypeRequest, AddExternalFunctionRequest, RenameTypeRequest, DeleteTypeRequest,
 			AddSubtypeRequest, SetSuperTypesRequest, SetParametersRequest, CreateFileRequest, RenameFileRequest, DeleteFileRequest,
 			InterceptRequest,
-			RestoreRequest {
+			RestoreRequest, SetTextRequest, CheckTextRequest {
 		String file();
 	}
 
@@ -191,6 +198,14 @@ final class Protocol {
 
 	/** Undo/redo: replace the file's text with {@code text} if it is still {@code expected}. */
 	record RestoreRequest(String file, String diagramType, String text, String expected) implements Request {
+	}
+
+	/** The text view's save: replace the file's text with {@code text} if it is still {@code expected}. */
+	record SetTextRequest(String file, String diagramType, String text, String expected) implements Request {
+	}
+
+	/** The problems {@code text} would have (the text view, while typing); nothing is written. */
+	record CheckTextRequest(String file, String text) implements Request {
 	}
 
 	/** How a request changed a file: its text before and after. */
@@ -319,6 +334,13 @@ final class Protocol {
 			return new RestoreRequest(string(o, "file"), string(o, "diagramType"),
 					required(o, "text"), required(o, "expected"));
 		}
+		if ("setText".equals(type)) {
+			return new SetTextRequest(required(o, "file"), string(o, "diagramType"),
+					required(o, "text"), required(o, "expected"));
+		}
+		if ("checkText".equals(type)) {
+			return new CheckTextRequest(required(o, "file"), required(o, "text"));
+		}
 		return null;
 	}
 
@@ -329,13 +351,9 @@ final class Protocol {
 		return GSON.toJson(o);
 	}
 
-	static String diagram(Diagram d) {
-		return diagram(d, null);
-	}
-
-	/** A diagram pushed because its file changed on disk (not an answer). */
-	static String update(Diagram d) {
-		JsonObject o = diagramJson(d, null);
+	/** A diagram pushed because its file changed on disk (not an answer); {@code text} is the file's. */
+	static String update(Diagram d, String text) {
+		JsonObject o = diagramJson(d, null, text);
 		o.addProperty("type", "update");
 		return GSON.toJson(o);
 	}
@@ -356,12 +374,35 @@ final class Protocol {
 		return GSON.toJson(o);
 	}
 
-	/** A diagram, with the change that the request made to the file (or null). */
-	static String diagram(Diagram d, Change change) {
-		return GSON.toJson(diagramJson(d, change));
+	/**
+	 * A diagram, built from the file's {@code text}, with the change that the
+	 * request made to the file (or null).
+	 */
+	static String diagram(Diagram d, Change change, String text) {
+		return GSON.toJson(diagramJson(d, change, text));
 	}
 
-	private static JsonObject diagramJson(Diagram d, Change change) {
+	/** The answer to "checkText". */
+	static String problems(List<Problem> problems) {
+		JsonObject o = new JsonObject();
+		o.addProperty("type", "problems");
+		o.add("problems", problemsJson(problems));
+		return GSON.toJson(o);
+	}
+
+	private static JsonArray problemsJson(List<Problem> problems) {
+		JsonArray array = new JsonArray();
+		for (Problem p : problems) {
+			JsonObject jp = new JsonObject();
+			jp.addProperty("line", p.line());
+			jp.addProperty("column", p.column());
+			jp.addProperty("message", p.message());
+			array.add(jp);
+		}
+		return array;
+	}
+
+	private static JsonObject diagramJson(Diagram d, Change change, String text) {
 		JsonObject o = new JsonObject();
 		o.addProperty("type", "diagram");
 		o.addProperty("file", d.file());
@@ -407,15 +448,7 @@ final class Protocol {
 			edges.add(je);
 		}
 		o.add("edges", edges);
-		JsonArray problems = new JsonArray();
-		for (Problem p : d.problems()) {
-			JsonObject jp = new JsonObject();
-			jp.addProperty("line", p.line());
-			jp.addProperty("column", p.column());
-			jp.addProperty("message", p.message());
-			problems.add(jp);
-		}
-		o.add("problems", problems);
+		o.add("problems", problemsJson(d.problems()));
 		o.addProperty("readOnly", d.readOnly());
 		JsonArray palette = new JsonArray();
 		for (Diagram.PaletteEntry p : d.palette()) {
@@ -428,6 +461,7 @@ final class Protocol {
 		}
 		o.add("palette", palette);
 		o.add("superTypes", strings(d.superTypes()));
+		o.addProperty("text", text);
 		if (change == null) {
 			o.add("change", com.google.gson.JsonNull.INSTANCE);
 		} else {

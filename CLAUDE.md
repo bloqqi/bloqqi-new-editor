@@ -128,6 +128,19 @@
   `expected = after` (redo the other way round), and the server writes it only
   if the file still equals `expected` (`Workspace.replace`); otherwise it
   refuses and the client clears that file's history.
+- Text view (toolbar "Diagram | Text", `?view=text`; `TextView.tsx`, loaded
+  lazily with CodeMirror 6, pinned `@codemirror/*`; highlighting in
+  `bloqqiLanguage.ts` from the scanner's keywords): the whole file, saved
+  explicitly (⌘S/Ctrl+S or Save). Every diagram message carries the file's
+  `text`. Typing sends `checkText` (debounced; answered with `problems`,
+  nothing written; RequestKind `check`, not counted as pending). Save sends
+  `setText {text, expected}` (expected = the text the editor is based on):
+  written only if the file is unchanged, but *not* checked, since a text may
+  be saved with errors (the diagram is then read-only); it is one undo step.
+  A new text from the server replaces the editor's if it has no unsaved
+  changes, otherwise a banner offers Reload / Keep mine. While there are
+  unsaved changes, File ▾, New ▾ and Undo/Redo are disabled, and leaving
+  (Diagram, another file) asks Save / Discard / Cancel (`UnsavedTextForm`).
 - Local and single-user for now. Compiler access is serialised by one global
   lock (see Gotchas).
 

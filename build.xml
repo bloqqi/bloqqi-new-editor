@@ -220,6 +220,8 @@
 		<copy file="${examples}/PLib.dia" tofile="${e2e.workspace}/Intercept.dia"/>
 		<!-- And for the parameter order test. -->
 		<copy file="${examples}/PLib.dia" tofile="${e2e.workspace}/Params.dia"/>
+		<!-- And for the text view tests. -->
+		<copy file="${examples}/TwoCounters.dia" tofile="${e2e.workspace}/Text.dia"/>
 		<!-- And for the re-measuring test, which changes it on disk. -->
 		<copy file="${examples}/PLib.dia" tofile="${e2e.workspace}/Remeasure.dia"/>
 	</target>
