@@ -94,7 +94,7 @@ The image contains the built editor, so to update it, pull and build it again,
 then start a new container (the files in `workspace/` are not affected):
 
 ```sh
-git pull && git submodule update --init
+git pull --recurse-submodules
 docker build -t bloqqi-editor .
 ```
 

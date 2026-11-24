@@ -252,8 +252,8 @@ run `ant test e2e`, then commit the submodule pointer.
   is a JRE with the classes, `lib/*.jar`, `client/dist` and the compiler's
   `examples/`, started with `Main --examples` (fills an empty workspace on
   start). There is no Docker in this dev environment; the image was tried on
-  the user's machine (2026-11-24) and works (before the examples were added
-  to it). No compose file: it could not default the user to `$(id -u)`,
+  the user's machine (2026-11-24) and works, including filling an empty
+  workspace with the examples. No compose file: it could not default the user to `$(id -u)`,
   which `docker run` does.
 - Run: `ant run` (builds first) → http://localhost:8080/?file=PLib.dia&type=PTrack
   (options: `-Dport=...`, `-Dworkspace=<dir of .dia files>`). The default
