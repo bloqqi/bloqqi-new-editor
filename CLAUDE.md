@@ -243,16 +243,18 @@ run `ant test e2e`, then commit the submodule pointer.
   `Drag.dia`, which only the drag tests edit). First time only: `cd client && npx playwright install chromium`
 - Single JUnit class: `ant test-compile` then
   `java -cp "build/server/classes:build/server/test-classes:build/compiler/classes:lib/*:bloqqi-compiler/tools/beaver-rt.jar:bloqqi-compiler/tools/gson-2.6.2.jar" -Dbloqqi.examples=bloqqi-compiler/examples org.junit.runner.JUnitCore org.bloqqi.web.DiagramBuilderTest`
-- Docker: `docker compose up --build` (`compose.yaml`: port 127.0.0.1:8080,
-  `./workspace` mounted at `/workspace`, user `${HOST_UID:-1000}:${HOST_GID:-1000}`,
-  not `UID`, which is read-only in bash), or `docker build` + `docker run`
+- Docker: `docker build -t bloqqi-editor .`, then
+  `docker run --rm -p 127.0.0.1:8080:8080 -v "$PWD/workspace:/workspace"
+  --user "$(id -u):$(id -g)" bloqqi-editor`
   (README). The `Dockerfile` builds the server with Ant and the
   client with npm in separate stages (base images and Ant pinned; `ant deps`
   has its own layer, depending only on `build.xml`); the runtime
   is a JRE with the classes, `lib/*.jar`, `client/dist` and the compiler's
   `examples/`, started with `Main --examples` (fills an empty workspace on
   start). There is no Docker in this dev environment; the image was tried on
-  the user's machine (2026-11-24) and works (compose not tried yet).
+  the user's machine (2026-11-24) and works (before the examples were added
+  to it). No compose file: it could not default the user to `$(id -u)`,
+  which `docker run` does.
 - Run: `ant run` (builds first) → http://localhost:8080/?file=PLib.dia&type=PTrack
   (options: `-Dport=...`, `-Dworkspace=<dir of .dia files>`). The default
   workspace is `workspace/`: only its `.gitkeep` is in git, its files are

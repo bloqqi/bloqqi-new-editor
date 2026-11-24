@@ -10,7 +10,7 @@
 /client/test-results/
 /client/playwright-report/
 
-# Default workspace of "ant run" and compose.yaml: only the empty folder is in
+# Default workspace of "ant run" and of Docker: only the empty folder is in
 # git; its files are yours (an empty workspace gets the compiler's examples).
 /workspace/*
 !/workspace/.gitkeep

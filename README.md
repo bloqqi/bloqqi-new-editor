@@ -76,33 +76,26 @@ Only git and Docker are needed:
 ```sh
 git clone --recursive https://github.com/bloqqi/bloqqi-new-editor.git
 cd bloqqi-new-editor
-docker compose up --build
+docker build -t bloqqi-editor .
+docker run --rm -p 127.0.0.1:8080:8080 \
+  -v "$PWD/workspace:/workspace" --user "$(id -u):$(id -g)" bloqqi-editor
 ```
 
 Then open <http://localhost:8080/?file=PLib.dia&type=PTrack> on the host.
 
 As with `ant run`, the editor works on the files in the clone's `workspace/`
-folder, which first gets the examples. It writes them as user id 1000, the
-usual one on Linux (on macOS any is fine). If yours is another (`id -u`),
-start it with `HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up --build`.
-The editor has no login, so it is reachable only from the host itself.
-[compose.yaml](compose.yaml) has these settings; change `ports` for another
-port, or `volumes` for another folder.
+folder, which first gets the examples. Any other folder works too:
+`-v /path/to/dia/files:/workspace`. `--user` makes the editor write files as
+you, not as the container's user. The editor has no login, so `127.0.0.1:`
+makes it reachable only from the host itself. Use `-p 127.0.0.1:9000:8080`
+for another port.
 
-The image contains the built editor, so to update it, pull and build it again
-(the files in `workspace/` are not affected):
+The image contains the built editor, so to update it, pull and build it again,
+then start a new container (the files in `workspace/` are not affected):
 
 ```sh
 git pull && git submodule update --init
-docker compose up --build
-```
-
-Without compose, the same is:
-
-```sh
 docker build -t bloqqi-editor .
-docker run --rm -p 127.0.0.1:8080:8080 \
-  -v "$PWD/workspace:/workspace" --user "$(id -u):$(id -g)" bloqqi-editor
 ```
 
 ## Develop

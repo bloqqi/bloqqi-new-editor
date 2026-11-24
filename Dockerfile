@@ -1,9 +1,5 @@
-# The Bloqqi web editor in a container. From a clone with the compiler
-# submodule (git clone --recursive ...), compose.yaml builds and runs it:
-#
-#   docker compose up --build
-#
-# or without compose:
+# The Bloqqi web editor in a container. Build from a clone with the compiler
+# submodule (git clone --recursive ...):
 #
 #   docker build -t bloqqi-editor .
 #   docker run --rm -p 127.0.0.1:8080:8080 -v "$PWD/workspace:/workspace" --user "$(id -u):$(id -g)" bloqqi-editor
