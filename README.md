@@ -27,6 +27,9 @@ In the browser you can:
 Changes made to the file elsewhere, such as in a text editor or another tab,
 appear immediately.
 
+[docs/feature-comparison.md](docs/feature-comparison.md) compares the
+features with those of the old editor, including what is still missing.
+
 ## Requirements
 
 (Or only Docker: see [Run with Docker](#run-with-docker).)
@@ -111,5 +114,6 @@ cp bloqqi-compiler/examples/*.dia workspace/
   `cd client && npm run dev` in another.
 - `ant clean` removes build outputs.
 
-`docs/editor-spec.md` describes the old editor and the design decisions.
+`docs/editor-spec.md` describes the old editor and the design decisions;
+`docs/feature-comparison.md` compares its features with the new editor's.
 `CLAUDE.md` has notes on the architecture and its pitfalls.

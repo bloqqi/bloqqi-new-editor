@@ -13,7 +13,8 @@
 - The old Eclipse editor is a separate, git-ignored clone in `bloqqi-editor/`
   (github.com/bloqqi/bloqqi-editor), kept only as a reference to check
   behaviour against; it is described in `docs/editor-spec.md`. It is not part
-  of the build. Don't edit it.
+  of the build. Don't edit it. `docs/feature-comparison.md` compares its
+  features with the new editor's; update it when a feature is added.
 - Server (`server/`): Java 21, Jetty 12 (core, no servlets). It serves the built
   client and a WebSocket at `/ws`. Every request reloads the file from the
   workspace directory; the server keeps no model. Each socket only remembers
@@ -174,8 +175,9 @@ run `ant test e2e`, then commit the submodule pointer.
   `docker run --rm -p 127.0.0.1:8080:8080 -v "$PWD/workspace:/workspace"
   --user "$(id -u):$(id -g)" bloqqi-editor` (README). The `Dockerfile` builds the server with Ant and the
   client with npm in separate stages (base images and Ant pinned); the runtime
-  is a JRE with the classes, `lib/*.jar` and `client/dist`. No Docker in this
-  dev environment, so the image build is untested here.
+  is a JRE with the classes, `lib/*.jar` and `client/dist`. There is no Docker
+  in this dev environment; the image was tried on the user's machine
+  (2026-11-24) and works.
 - Run: `ant run` → http://localhost:8080/?file=PLib.dia&type=PTrack
   (options: `-Dport=...`, `-Dworkspace=<dir of .dia files>`). The default
   workspace is `workspace/` (git-ignored, kept by `ant clean`), created on first
