@@ -89,7 +89,7 @@ export function AddForm({
             ref={first}
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            placeholder="3, 2.5, true or &quot;text&quot;"
+            placeholder='3, 2.5, true or "text"'
             aria-label="Value"
           />
         </label>

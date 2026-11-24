@@ -152,12 +152,15 @@
 
 	<!-- ===== Client ===== -->
 
+	<!-- npm writes node_modules/.package-lock.json on install: older than
+	     package-lock.json (or missing) means the dependencies changed. -->
 	<target name="client-install-check">
-		<available file="${client.dir}/node_modules" type="dir" property="client.installed"/>
+		<uptodate property="client.installed" srcfile="${client.dir}/package-lock.json"
+				targetfile="${client.dir}/node_modules/.package-lock.json"/>
 	</target>
 
 	<target name="client-install" depends="client-install-check" unless="client.installed"
-			description="npm ci (only if client/node_modules is missing)">
+			description="npm ci (only if client/node_modules is missing or older than package-lock.json)">
 		<exec executable="npm" dir="${client.dir}" failonerror="true">
 			<arg value="ci"/>
 		</exec>
@@ -171,6 +174,17 @@
 	</target>
 
 	<target name="build" depends="server,client" description="Build server and client"/>
+
+	<target name="lint" depends="client-install" description="Check the client's code: ESLint and Prettier">
+		<exec executable="npm" dir="${client.dir}" failonerror="true">
+			<arg value="run"/>
+			<arg value="lint"/>
+		</exec>
+		<exec executable="npm" dir="${client.dir}" failonerror="true">
+			<arg value="run"/>
+			<arg value="format:check"/>
+		</exec>
+	</target>
 
 	<!-- ===== Tests ===== -->
 

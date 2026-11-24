@@ -199,15 +199,13 @@ export function useDialogs({
       setFormError(null);
       setFeaturesQuestion(null);
       setFeaturesForm({ block, screen, features: null });
-      void request({ type: 'features', file: diagram.file, diagramType: diagram.diagramType, block }).then(
-        (answer) => {
-          if (answer.type === 'features') {
-            setFeaturesForm((f) => (f && f.block === block ? { ...f, features: answer } : f));
-          } else if (answer.type === 'error') {
-            setFormError(answer.message);
-          }
-        },
-      );
+      void request({ type: 'features', file: diagram.file, diagramType: diagram.diagramType, block }).then((answer) => {
+        if (answer.type === 'features') {
+          setFeaturesForm((f) => (f && f.block === block ? { ...f, features: answer } : f));
+        } else if (answer.type === 'error') {
+          setFormError(answer.message);
+        }
+      });
     },
     [diagram, request],
   );
@@ -332,7 +330,10 @@ export function useDialogs({
         }
         case 'renameType':
           // Answered with the shown type, under its new name if it was the one renamed.
-          send({ type: 'renameType', file: diagram.file, diagramType: diagram.diagramType, typeName: prompt.id, name }, 'form');
+          send(
+            { type: 'renameType', file: diagram.file, diagramType: diagram.diagramType, typeName: prompt.id, name },
+            'form',
+          );
           return;
       }
       if (!diagram.diagramType) return;

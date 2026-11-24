@@ -50,7 +50,7 @@ export function App() {
   // dialogs are created after the server (they need its send), hence the ref.
   const formAnswered = useRef<(error: string | null) => void>(() => {});
   const server = useServer(useCallback((error: string | null) => formAnswered.current(error), []));
-  const { diagram, status, send, open } = server;
+  const { diagram, status, send, request, open } = server;
   const flow = useDiagramFlow(diagram, send);
 
   /** The shown diagram can be edited. */
@@ -116,8 +116,9 @@ export function App() {
   }, [view, textDirty, diagram?.file, open, historyDepth, syncHistoryDepth]);
 
   // File undo/redo, not while the text has unsaved changes (the editor has its own).
-  const undo = useCallback(() => !textDirty && server.undo(), [textDirty, server.undo]);
-  const redo = useCallback(() => !textDirty && server.redo(), [textDirty, server.redo]);
+  const { undo: serverUndo, redo: serverRedo } = server;
+  const undo = useCallback(() => !textDirty && serverUndo(), [textDirty, serverUndo]);
+  const redo = useCallback(() => !textDirty && serverRedo(), [textDirty, serverRedo]);
   useUndoRedoKeys(undo, redo);
   useRenameKey(flow.nodes, dialogs.editNode);
 
@@ -134,7 +135,7 @@ export function App() {
     async (typeName: string, x: number, y: number, screen: { x: number; y: number }) => {
       if (!diagram?.diagramType) return;
       const before = new Set(diagram.nodes.map((n) => n.id));
-      const answer = await server.request({
+      const answer = await request({
         type: 'addBlock',
         file: diagram.file,
         diagramType: diagram.diagramType,
@@ -146,7 +147,7 @@ export function App() {
       const added = answer.nodes.find((n) => n.kind === 'block' && !before.has(n.id) && n.featureBase);
       if (added?.featureBase) askFeatures(added.id, added.featureBase, screen);
     },
-    [diagram, server.request, askFeatures],
+    [diagram, request, askFeatures],
   );
 
   // The right-click menus.
@@ -219,10 +220,8 @@ export function App() {
     },
     [menuContext, openMenu],
   );
-  const onNodeDoubleClick = useCallback(
-    (_e: React.MouseEvent, node: DiagramFlowNode) => dialogs.editNode(node),
-    [dialogs.editNode],
-  );
+  const { editNode, newDiagramType, newExternalFunction } = dialogs;
+  const onNodeDoubleClick = useCallback((_e: React.MouseEvent, node: DiagramFlowNode) => editNode(node), [editNode]);
 
   /** The toolbar's New ▾ menu, below the button. */
   const onNew = useCallback(
@@ -232,12 +231,12 @@ export function App() {
       openMenu(
         below,
         newMenu({
-          newDiagramType: () => dialogs.newDiagramType(below),
-          newExternalFunction: () => dialogs.newExternalFunction(below),
+          newDiagramType: () => newDiagramType(below),
+          newExternalFunction: () => newExternalFunction(below),
         }),
       );
     },
-    [openMenu, dialogs.newDiagramType, dialogs.newExternalFunction],
+    [openMenu, newDiagramType, newExternalFunction],
   );
 
   /** The toolbar's File ▾ menu, below the button. */

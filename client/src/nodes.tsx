@@ -113,8 +113,20 @@ function ConnectionHandle({
 function EdgeHandles({ data, isConnectable }: { data: DiagramNode; isConnectable: boolean }) {
   return (
     <>
-      <ConnectionHandle data={data} id="in" side="in" canvasConnectable={isConnectable} className="node-handle node-handle--in" />
-      <ConnectionHandle data={data} id="out" side="out" canvasConnectable={isConnectable} className="node-handle node-handle--out" />
+      <ConnectionHandle
+        data={data}
+        id="in"
+        side="in"
+        canvasConnectable={isConnectable}
+        className="node-handle node-handle--in"
+      />
+      <ConnectionHandle
+        data={data}
+        id="out"
+        side="out"
+        canvasConnectable={isConnectable}
+        className="node-handle node-handle--out"
+      />
     </>
   );
 }
@@ -192,18 +204,18 @@ export function InParameterNode({ data, isConnectable, selected }: NodeProps<Dia
   const editing = useEditing();
   return (
     <>
-    <div className={nodeClasses('parameter', data) + ' parameter--in'} title={`in ${data.id}: ${data.typeName}`}>
-      <span className="node__label">{data.label}</span>
-      <span className="parameter__marker" aria-hidden="true" />
-      <EdgeHandles data={data} isConnectable={isConnectable} />
-    </div>
-    {selected && editing.editable && data.deletable && (
-      <NodeDeleteButton
-        label="Delete parameter"
-        className="delete-button--block"
-        onClick={() => editing.deleteItems({ nodes: [data.id] })}
-      />
-    )}
+      <div className={nodeClasses('parameter', data) + ' parameter--in'} title={`in ${data.id}: ${data.typeName}`}>
+        <span className="node__label">{data.label}</span>
+        <span className="parameter__marker" aria-hidden="true" />
+        <EdgeHandles data={data} isConnectable={isConnectable} />
+      </div>
+      {selected && editing.editable && data.deletable && (
+        <NodeDeleteButton
+          label="Delete parameter"
+          className="delete-button--block"
+          onClick={() => editing.deleteItems({ nodes: [data.id] })}
+        />
+      )}
     </>
   );
 }
@@ -213,18 +225,18 @@ export function OutParameterNode({ data, isConnectable, selected }: NodeProps<Di
   const editing = useEditing();
   return (
     <>
-    <div className={nodeClasses('parameter', data) + ' parameter--out'} title={`out ${data.id}: ${data.typeName}`}>
-      <span className="parameter__marker" aria-hidden="true" />
-      <span className="node__label">{data.label}</span>
-      <EdgeHandles data={data} isConnectable={isConnectable} />
-    </div>
-    {selected && editing.editable && data.deletable && (
-      <NodeDeleteButton
-        label="Delete parameter"
-        className="delete-button--block"
-        onClick={() => editing.deleteItems({ nodes: [data.id] })}
-      />
-    )}
+      <div className={nodeClasses('parameter', data) + ' parameter--out'} title={`out ${data.id}: ${data.typeName}`}>
+        <span className="parameter__marker" aria-hidden="true" />
+        <span className="node__label">{data.label}</span>
+        <EdgeHandles data={data} isConnectable={isConnectable} />
+      </div>
+      {selected && editing.editable && data.deletable && (
+        <NodeDeleteButton
+          label="Delete parameter"
+          className="delete-button--block"
+          onClick={() => editing.deleteItems({ nodes: [data.id] })}
+        />
+      )}
     </>
   );
 }
@@ -234,17 +246,17 @@ export function VariableNode({ data, isConnectable, selected }: NodeProps<Diagra
   const editing = useEditing();
   return (
     <>
-    <div className={nodeClasses('variable', data)} title={`${data.id}: ${data.typeName}`}>
-      <span className="node__label">{data.label}</span>
-      <EdgeHandles data={data} isConnectable={isConnectable} />
-    </div>
-    {selected && editing.editable && data.deletable && (
-      <NodeDeleteButton
-        label="Delete variable"
-        className="delete-button--block"
-        onClick={() => editing.deleteItems({ nodes: [data.id] })}
-      />
-    )}
+      <div className={nodeClasses('variable', data)} title={`${data.id}: ${data.typeName}`}>
+        <span className="node__label">{data.label}</span>
+        <EdgeHandles data={data} isConnectable={isConnectable} />
+      </div>
+      {selected && editing.editable && data.deletable && (
+        <NodeDeleteButton
+          label="Delete variable"
+          className="delete-button--block"
+          onClick={() => editing.deleteItems({ nodes: [data.id] })}
+        />
+      )}
     </>
   );
 }

@@ -131,10 +131,7 @@ export function useServer(onFormAnswered: (error: string | null) => void): Serve
   const [, historyChanged] = useReducer((n: number) => n + 1, 0);
   const pending = useRef<Pending[]>([]);
   const [pendingCount, setPendingCount] = useState(0);
-  const countPending = useCallback(
-    () => setPendingCount(pending.current.filter((p) => p.kind !== 'query').length),
-    [],
-  );
+  const countPending = useCallback(() => setPendingCount(pending.current.filter((p) => p.kind !== 'query').length), []);
   const formAnswered = useRef(onFormAnswered);
   formAnswered.current = onFormAnswered;
 
@@ -319,7 +316,13 @@ export function useServer(onFormAnswered: (error: string | null) => void): Serve
     const entry = diagram && history.current.nextUndo(diagram.file);
     if (!canUndo || !diagram || !entry) return;
     send(
-      { type: 'restore', file: diagram.file, diagramType: entry.diagramType, text: entry.before, expected: entry.after },
+      {
+        type: 'restore',
+        file: diagram.file,
+        diagramType: entry.diagramType,
+        text: entry.before,
+        expected: entry.after,
+      },
       'undo',
     );
   }, [canUndo, diagram, send]);
@@ -328,7 +331,13 @@ export function useServer(onFormAnswered: (error: string | null) => void): Serve
     const entry = diagram && history.current.nextRedo(diagram.file);
     if (!canRedo || !diagram || !entry) return;
     send(
-      { type: 'restore', file: diagram.file, diagramType: entry.diagramType, text: entry.after, expected: entry.before },
+      {
+        type: 'restore',
+        file: diagram.file,
+        diagramType: entry.diagramType,
+        text: entry.after,
+        expected: entry.before,
+      },
       'redo',
     );
   }, [canRedo, diagram, send]);

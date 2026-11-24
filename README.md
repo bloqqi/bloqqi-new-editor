@@ -117,6 +117,8 @@ docker build -t bloqqi-editor .
 ## Develop
 
 - `ant test` runs the server tests (JUnit).
+- `ant lint` checks the client's code (ESLint, and Prettier's formatting);
+  `cd client && npm run format` formats it.
 - `ant e2e` runs the browser tests (Playwright). Before the first run, install
   the browser with `cd client && npx playwright install chromium`.
 - For a client dev server with hot reload, run `ant run` in one terminal and

@@ -33,7 +33,7 @@ export interface MenuContext {
 
 /** Why nothing can be edited, or null if it can. */
 function readOnlyReason(c: MenuContext): string | null {
-  return c.editable ? null : c.diagram.readOnly ?? 'Not connected';
+  return c.editable ? null : (c.diagram.readOnly ?? 'Not connected');
 }
 
 /** Blocks: Rename…, Open <Type>, Delete; parameters: Rename…, Parameters…, Delete; variables: Rename…, Delete; literals: Change value…, Delete. */
@@ -44,10 +44,19 @@ export function nodeMenu(node: DiagramFlowNode, c: MenuContext, at: Point): Menu
     const reason = readOnly ?? (id ? null : 'Inherited');
     return [
       { label: 'Change value…', disabledReason: reason, onSelect: () => c.editNode(node) },
-      { label: 'Delete', shortcut: 'Del', disabledReason: reason, onSelect: () => id && c.deleteItems({ edges: [id] }) },
+      {
+        label: 'Delete',
+        shortcut: 'Del',
+        disabledReason: reason,
+        onSelect: () => id && c.deleteItems({ edges: [id] }),
+      },
     ];
   }
-  const notHere = node.data.inherited ? 'Inherited' : node.data.inlined ? 'Inside an inlined block' : 'Not declared here';
+  const notHere = node.data.inherited
+    ? 'Inherited'
+    : node.data.inlined
+      ? 'Inside an inlined block'
+      : 'Not declared here';
   const reason = readOnly ?? (node.data.deletable ? null : notHere);
   const items: MenuItem[] = [
     { label: 'Rename…', shortcut: 'F2', disabledReason: reason, onSelect: () => c.editNode(node) },
@@ -80,7 +89,8 @@ export function nodeMenu(node: DiagramFlowNode, c: MenuContext, at: Point): Menu
 /** Connections: Intercept, Intercept source port (inherited ones, spec §3.7), Delete. */
 export function edgeMenu(edge: FlowEdgeType, c: MenuContext): MenuItem[] {
   const readOnly = readOnlyReason(c);
-  const deleteReason = readOnly ?? (edge.data?.deletable ? null : edge.data?.inherited ? 'Inherited' : 'Not declared here');
+  const deleteReason =
+    readOnly ?? (edge.data?.deletable ? null : edge.data?.inherited ? 'Inherited' : 'Not declared here');
   const interceptReason =
     readOnly ??
     (edge.data?.interceptable
@@ -92,7 +102,12 @@ export function edgeMenu(edge: FlowEdgeType, c: MenuContext): MenuItem[] {
   return [
     { label: 'Intercept', disabledReason: interceptReason, onSelect: () => c.intercept(edge.id, false) },
     { label: 'Intercept source port', disabledReason: sourceReason, onSelect: () => c.intercept(edge.id, true) },
-    { label: 'Delete', shortcut: 'Del', disabledReason: deleteReason, onSelect: () => c.deleteItems({ edges: [edge.id] }) },
+    {
+      label: 'Delete',
+      shortcut: 'Del',
+      disabledReason: deleteReason,
+      onSelect: () => c.deleteItems({ edges: [edge.id] }),
+    },
   ];
 }
 
@@ -120,12 +135,14 @@ export function paletteMenu(entry: PaletteEntry, c: MenuContext, at: Point): Men
 }
 
 function fileReason(c: MenuContext): string | null {
-  return c.fileEditable ? null : c.diagram.readOnly ?? 'Not connected';
+  return c.fileEditable ? null : (c.diagram.readOnly ?? 'Not connected');
 }
 
 function typeItems(name: string, kind: PaletteEntry['kind'], c: MenuContext, at: Point): MenuItem[] {
   const reason = fileReason(c);
-  const items: MenuItem[] = [{ label: `Rename ${name}…`, disabledReason: reason, onSelect: () => c.renameType(name, at) }];
+  const items: MenuItem[] = [
+    { label: `Rename ${name}…`, disabledReason: reason, onSelect: () => c.renameType(name, at) },
+  ];
   if (kind === 'diagramType') {
     items.push({ label: `New subtype of ${name}…`, disabledReason: reason, onSelect: () => c.newSubtype(name, at) });
   }

@@ -27,7 +27,9 @@ export function InterceptMode({
     <>
       <div className="banner banner--pick" role="status" data-testid="intercept-hint">
         <span>
-          <strong>{atSource ? 'Intercept the source of' : 'Intercept'} {connection}:</strong>{' '}
+          <strong>
+            {atSource ? 'Intercept the source of' : 'Intercept'} {connection}:
+          </strong>{' '}
           {into
             ? `now click the output port it comes back out of (${endpointLabel(into.node, into.handle)} → …).`
             : 'click the input port it goes into.'}{' '}

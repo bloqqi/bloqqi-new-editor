@@ -186,7 +186,6 @@ async function drag(page: Page, id: string, dx: number, dy: number) {
 // Drag.dia is a copy of TwoCounters.dia that only these tests edit (see the
 // e2e-workspace target in build.xml).
 test.describe.serial('moving nodes', () => {
-
   test('dragging a block stores its position in the file', async ({ page }) => {
     await goto(page, '/?file=Drag.dia&type=Acc');
     await expect(node(page, 'add')).toBeVisible();
@@ -215,8 +214,7 @@ test.describe.serial('moving nodes', () => {
     await goto(page, '/?file=Drag.dia&type=Main');
     const literal = node(page, '#literal:acc1.in:in');
     await expect(literal).toHaveText('1');
-    const gap = async () =>
-      (await node(page, 'acc1').boundingBox())!.x - (await literal.boundingBox())!.x;
+    const gap = async () => (await node(page, 'acc1').boundingBox())!.x - (await literal.boundingBox())!.x;
     const gapBefore = await gap();
 
     await drag(page, 'acc1', 150, 80);
@@ -266,8 +264,7 @@ test.describe.serial('moving nodes', () => {
     const literal = node(page, '#literal:acc2.in:in');
     await expect(literal).toBeVisible();
     const before = readDrag();
-    const offset = async () =>
-      (await node(page, 'acc2').boundingBox())!.x - (await literal.boundingBox())!.x;
+    const offset = async () => (await node(page, 'acc2').boundingBox())!.x - (await literal.boundingBox())!.x;
     const offsetBefore = await offset();
     // (Dragging a literal pans the canvas instead.)
     await drag(page, '#literal:acc2.in:in', 100, 100);
@@ -479,7 +476,9 @@ test.describe.serial('moving nodes', () => {
     const form = page.getByTestId('add-form');
 
     // Dropped away from any port: a hint instead of a form.
-    await page.getByTestId('tool-literal').dragTo(page.locator('.react-flow__pane'), { targetPosition: { x: 500, y: 300 } });
+    await page
+      .getByTestId('tool-literal')
+      .dragTo(page.locator('.react-flow__pane'), { targetPosition: { x: 500, y: 300 } });
     await expect(page.getByRole('alert')).toContainText('Drop the literal on a free input port');
     await expect(form).toHaveCount(0);
 
@@ -500,7 +499,9 @@ test.describe.serial('moving nodes', () => {
   test('dropping a variable opens a form for its kind, name and type', async ({ page }) => {
     await goto(page, '/?file=Drag.dia&type=Acc');
     const form = page.getByTestId('add-form');
-    await page.getByTestId('tool-variable').dragTo(page.locator('.react-flow__pane'), { targetPosition: { x: 450, y: 320 } });
+    await page
+      .getByTestId('tool-variable')
+      .dragTo(page.locator('.react-flow__pane'), { targetPosition: { x: 450, y: 320 } });
     await expect(form.getByLabel('Name')).toHaveValue('v'); // a suggestion
 
     // A name that is taken is refused; Escape cancels without changing anything.
@@ -512,7 +513,9 @@ test.describe.serial('moving nodes', () => {
     await expect(form).toHaveCount(0);
     expect(readDrag()).toBe(before);
 
-    await page.getByTestId('tool-variable').dragTo(page.locator('.react-flow__pane'), { targetPosition: { x: 450, y: 320 } });
+    await page
+      .getByTestId('tool-variable')
+      .dragTo(page.locator('.react-flow__pane'), { targetPosition: { x: 450, y: 320 } });
     await form.getByLabel('Kind').selectOption('input');
     await form.getByLabel('Name').fill('level');
     await form.getByLabel('Type').selectOption('Real');
@@ -525,7 +528,9 @@ test.describe.serial('moving nodes', () => {
   test('an input parameter is added to the header, and can be deleted and undeleted', async ({ page }) => {
     await goto(page, '/?file=Drag.dia&type=Acc');
     const form = page.getByTestId('add-form');
-    await page.getByTestId('tool-inParameter').dragTo(page.locator('.react-flow__pane'), { targetPosition: { x: 60, y: 330 } });
+    await page
+      .getByTestId('tool-inParameter')
+      .dragTo(page.locator('.react-flow__pane'), { targetPosition: { x: 60, y: 330 } });
     await form.getByLabel('Name').fill('reset');
     await form.getByLabel('Type').selectOption('Bool');
     await form.getByLabel('Name').press('Enter');
@@ -1010,7 +1015,13 @@ test("a type's own parameters can be reordered and removed; inherited ones come 
   await page.getByRole('menuitem', { name: 'Parameters…' }).click();
   const form = page.getByTestId('parameters-form');
   const ins = form.getByTestId('in-parameters').locator('li');
-  await expect(ins).toHaveText(['SP: Realfrom P', 'PV: Realfrom P', 'K: Realfrom P', 'Track: Bool↑↓×', 'TrackValue: Real↑↓×']);
+  await expect(ins).toHaveText([
+    'SP: Realfrom P',
+    'PV: Realfrom P',
+    'K: Realfrom P',
+    'Track: Bool↑↓×',
+    'TrackValue: Real↑↓×',
+  ]);
   await expect(form.getByTestId('out-parameters').locator('li')).toHaveText(['Out: Realfrom P']);
   await expect(form.getByRole('button', { name: 'Apply' })).toBeDisabled();
   await form.getByRole('button', { name: 'Move TrackValue up' }).click();
@@ -1022,7 +1033,13 @@ test("a type's own parameters can be reordered and removed; inherited ones come 
   // Removing one also deletes its connections.
   await paneMenuAt(page);
   await page.getByRole('menuitem', { name: 'Parameters…' }).click();
-  await expect(ins).toHaveText(['SP: Realfrom P', 'PV: Realfrom P', 'K: Realfrom P', 'TrackValue: Real↑↓×', 'Track: Bool↑↓×']);
+  await expect(ins).toHaveText([
+    'SP: Realfrom P',
+    'PV: Realfrom P',
+    'K: Realfrom P',
+    'TrackValue: Real↑↓×',
+    'Track: Bool↑↓×',
+  ]);
   await form.getByRole('button', { name: 'Remove Track', exact: true }).click();
   await form.getByRole('button', { name: 'Apply' }).click();
   await expect(form).toHaveCount(0);
@@ -1125,9 +1142,7 @@ test("a block's features can be selected; excluded ones are unselected", async (
   await expect(form.getByTestId('features-order')).toHaveText('In this order: Derivative, PTrack');
   await form.getByRole('button', { name: 'Apply' }).click();
   await expect(form).toHaveCount(0);
-  await expect
-    .poll(text)
-    .toContain('  pid: P {\n    feature Derivative;\n    feature PTrack;\n  };');
+  await expect.poll(text).toContain('  pid: P {\n    feature Derivative;\n    feature PTrack;\n  };');
   // PTrack's ports Track and TrackValue instead of Integral's Ti; the block fits them.
   await expect(inPorts).toHaveCount(7);
   await expect.poll(text).toMatch(/pid = \(\d+, \d+, \d+, 100\)/);
@@ -1266,7 +1281,11 @@ test('the canvas only shows the area where nodes can go, with the same edge ever
   };
 
   // Fitted views of differently sized diagrams (different zoom levels).
-  for (const url of ['/?file=TwoCounters.dia&type=Acc', '/?file=vlhcc-large.dia&type=Tank', '/?file=PLib.dia&type=IPart']) {
+  for (const url of [
+    '/?file=TwoCounters.dia&type=Acc',
+    '/?file=vlhcc-large.dia&type=Tank',
+    '/?file=PLib.dia&type=IPart',
+  ]) {
     await goto(page, url);
     expect(await strip(), url).toEqual([16, 16]);
   }
@@ -1301,9 +1320,7 @@ test.describe.serial('text view', () => {
     await expect(editor(page)).toContainText('diagramtype Acc');
   }
   const editorText = (page: Page) =>
-    page.evaluate(() =>
-      [...document.querySelectorAll('.cm-content .cm-line')].map((l) => l.textContent).join('\n'),
-    );
+    page.evaluate(() => [...document.querySelectorAll('.cm-content .cm-line')].map((l) => l.textContent).join('\n'));
 
   test('shows the whole file; typing is checked, saving writes it and updates the diagram', async ({ page }) => {
     const original = readText();
@@ -1391,7 +1408,10 @@ test.describe.serial('text view', () => {
         const line = lines.slice(decl).find((l) => l.textContent!.startsWith('annotation('))!;
         const r = line.getBoundingClientRect();
         const placeholders = [...document.querySelectorAll('.cm-foldPlaceholder')];
-        return { placeholder: placeholders.indexOf(line.querySelector('.cm-foldPlaceholder')!), y: r.top + r.height / 2 };
+        return {
+          placeholder: placeholders.indexOf(line.querySelector('.cm-foldPlaceholder')!),
+          y: r.top + r.height / 2,
+        };
       });
     const clickArrow = async () => {
       const gutter = (await page.locator('.cm-foldGutter').boundingBox())!;
@@ -1508,7 +1528,7 @@ test.describe.serial('text view', () => {
     };
 
     // As bloqqi-compiler --c=minimal: the program for Main, without a main() loop.
-    let c = await copied();
+    const c = await copied();
     await expect(page.getByTestId('c-copy')).toHaveText('Copied');
     expect(c).toContain('void bloqqi_main(Main_VARS *vars)');
     expect(c).toContain('Acc_RES acc1 = Acc(1, &_state->acc1);');

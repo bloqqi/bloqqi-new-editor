@@ -40,8 +40,7 @@ export function ParametersForm({
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => form.current?.querySelector<HTMLElement>('button:not(:disabled)')?.focus(), []);
 
-  const changed =
-    ins.join(',') !== own(inParameters).join(',') || outs.join(',') !== own(outParameters).join(',');
+  const changed = ins.join(',') !== own(inParameters).join(',') || outs.join(',') !== own(outParameters).join(',');
   const rows = 2 + inParameters.length + outParameters.length;
   const left = Math.min(screen.x, window.innerWidth - 320);
   const top = Math.max(8, Math.min(screen.y, window.innerHeight - 200 - rows * 30));
@@ -65,20 +64,8 @@ export function ParametersForm({
       }}
     >
       <h3 className="add-form__title">Parameters of {typeName}</h3>
-      <ParameterList
-        title="In"
-        testId="in-parameters"
-        all={inParameters}
-        order={ins}
-        setOrder={setIns}
-      />
-      <ParameterList
-        title="Out"
-        testId="out-parameters"
-        all={outParameters}
-        order={outs}
-        setOrder={setOuts}
-      />
+      <ParameterList title="In" testId="in-parameters" all={inParameters} order={ins} setOrder={setIns} />
+      <ParameterList title="Out" testId="out-parameters" all={outParameters} order={outs} setOrder={setOuts} />
       <p className="add-form__message">
         Blocks of type {typeName} get their ports in this order. Inherited parameters come first. Removing a parameter
         also deletes its connections; add new ones from the palette.

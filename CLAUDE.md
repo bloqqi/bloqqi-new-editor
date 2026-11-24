@@ -213,6 +213,8 @@
   The same goes for the Jetty jars.
 - Every diagram operation gets a test: apply it to an example file, then
   check that the new text reparses and the AST is as expected.
+- Client code passes `ant lint` (ESLint with no warnings, Prettier's format)
+  before it is committed.
 
 ## Commands
 All commands run from `/workspace/editor`. Requires JDK 21 or later, Ant, Node 20+.
@@ -222,7 +224,11 @@ only its `gen` target and compiles it, like the server, with `release=21` into
 `build/compiler`. To update the compiler: `git -C bloqqi-compiler checkout <commit>`,
 run `ant test e2e`, then commit the submodule pointer.
 - Build: `ant build` (downloads pinned jars into `lib/`, builds compiler, server
-  and client; `npm ci` runs only if `client/node_modules` is missing)
+  and client; `npm ci` runs only if `client/node_modules` is missing or older
+  than `client/package-lock.json`)
+- Lint (client): `ant lint` (ESLint with the TypeScript rules and React's rules
+  of hooks, `client/eslint.config.js`; and Prettier, `client/.prettierrc.json`:
+  single quotes, 120 columns). Format with `cd client && npm run format`.
 - Test (server, JUnit): `ant test`
 - Test (browser, Playwright): `ant e2e` (builds first; starts the server on
   port 8091 with a fresh copy of the examples in `build/e2e-workspace`, plus

@@ -14,7 +14,11 @@
   --boundary: #9a9aa3;
   --port-local: #0b2a7a;
   --port-inherited: #000000;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
   font-size: 14px;
   color: var(--text);
 }
@@ -834,7 +838,9 @@ body,
   padding: 0;
   display: grid;
   place-items: center;
-  font: 600 14px/1 system-ui, sans-serif;
+  font:
+    600 14px/1 system-ui,
+    sans-serif;
   color: var(--muted);
   background: #ffffff;
   border: 1px solid var(--border);

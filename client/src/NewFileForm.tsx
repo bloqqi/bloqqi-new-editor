@@ -47,7 +47,13 @@ export function NewFileForm({
       <h3 className="add-form__title">New file</h3>
       <label>
         Name
-        <input ref={first} value={name} onChange={(e) => setName(e.target.value)} placeholder="Controllers.dia" aria-label="Name" />
+        <input
+          ref={first}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Controllers.dia"
+          aria-label="Name"
+        />
       </label>
       <label>
         Type

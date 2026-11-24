@@ -97,7 +97,16 @@ export function DeleteButton({ x, y, label, onClick }: { x: number; y: number; l
   );
 }
 
-export function FlowEdge({ id, sourceX, sourceY, targetX, targetY, data, markerEnd, selected }: EdgeProps<FlowEdgeType>) {
+export function FlowEdge({
+  id,
+  sourceX,
+  sourceY,
+  targetX,
+  targetY,
+  data,
+  markerEnd,
+  selected,
+}: EdgeProps<FlowEdgeType>) {
   const editing = useEditing();
   const isSelected = !!selected;
   if (!data) return null;
@@ -118,7 +127,12 @@ export function FlowEdge({ id, sourceX, sourceY, targetX, targetY, data, markerE
     return (
       <>
         {halo}
-        <BaseEdge id={id} path={toPath(points)} markerEnd={markerEnd} className={lineClass(data, data.inherited, isSelected)} />
+        <BaseEdge
+          id={id}
+          path={toPath(points)}
+          markerEnd={markerEnd}
+          className={lineClass(data, data.inherited, isSelected)}
+        />
         {deleteButton}
       </>
     );
@@ -139,13 +153,7 @@ export function FlowEdge({ id, sourceX, sourceY, targetX, targetY, data, markerE
         markerEnd={markerEnd}
         className={lineClass(data, !firstInherited, isSelected)}
       />
-      <rect
-        className="flow__marker"
-        x={mid[0] - size / 2}
-        y={mid[1] - size / 2}
-        width={size}
-        height={size}
-      />
+      <rect className="flow__marker" x={mid[0] - size / 2} y={mid[1] - size / 2} width={size} height={size} />
       {deleteButton}
     </g>
   );
