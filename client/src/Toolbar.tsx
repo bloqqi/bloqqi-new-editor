@@ -8,7 +8,7 @@ export type ViewMode = 'diagram' | 'text' | 'c';
 const UNSAVED = 'Save or revert the changes in the text first';
 
 /**
- * The header: file and diagram type selection, File ▾, New ▾, the
+ * The header: Back, file and diagram type selection, File ▾, New ▾, the
  * Diagram/Text/C switch, Undo/Redo and the connection status.
  */
 export function Toolbar({
@@ -18,6 +18,8 @@ export function Toolbar({
   textDirty,
   onView,
   onOpenFile,
+  canGoBack,
+  onBack,
   onNew,
   onFileMenu,
 }: {
@@ -30,6 +32,9 @@ export function Toolbar({
   onView: (view: ViewMode) => void;
   /** Another file was chosen (it may have to wait for unsaved text). */
   onOpenFile: (file: string) => void;
+  /** An earlier file or type to go back to (in the browser's history). */
+  canGoBack: boolean;
+  onBack: () => void;
   onNew: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onFileMenu: (event: React.MouseEvent<HTMLButtonElement>) => void;
 }) {
@@ -37,6 +42,17 @@ export function Toolbar({
   return (
     <header className="toolbar">
       <strong className="toolbar__title">Bloqqi</strong>
+      <button
+        type="button"
+        data-testid="back"
+        className="toolbar__back"
+        onClick={onBack}
+        disabled={!canGoBack}
+        aria-label="Back"
+        title="Back to the file or type shown before (also the browser's Back)"
+      >
+        ←
+      </button>
       <label>
         File{' '}
         <select

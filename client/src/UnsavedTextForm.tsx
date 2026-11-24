@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useEscape } from './shortcuts';
 
 /**
  * Asks what to do with the text view's unsaved changes before leaving it
@@ -20,6 +21,7 @@ export function UnsavedTextForm({
 }) {
   const save = useRef<HTMLButtonElement>(null);
   useEffect(() => save.current?.focus(), []);
+  useEscape(!busy, onCancel);
   const left = Math.max(8, window.innerWidth / 2 - 160);
 
   return (

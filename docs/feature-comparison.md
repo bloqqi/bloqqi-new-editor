@@ -13,7 +13,7 @@ one in [README.md](../README.md) and [CLAUDE.md](../CLAUDE.md). State as of
 | Diagram types with inheritance, interceptions, inlined blocks | ✅ | ✅ |
 | Choosing the shown type | Outline tree | Toolbar drop-down (sorted) |
 | Opening anonymous types (blocks with features) | ✅ via outline | ❌ |
-| Open Declaration (block → its type) | ✅ | ✅ (no Back button) |
+| Open Declaration (block → its type) | ✅ (no way back) | ✅ with Back (toolbar ← and the browser's Back/Forward) |
 | Zoom, fit | ✅ zoom combo | ✅ zoom/fit buttons |
 | "Show types" on blocks and variables | ✅ preference | ➖ tooltip only |
 | Connection router (straight/Manhattan) | ➖ hidden preference | ❌ always orthogonal |

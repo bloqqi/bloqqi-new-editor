@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas } from './Canvas';
 import { Dialogs } from './Dialogs';
 import { EditingContext, type Editing } from './editing';
@@ -15,7 +15,7 @@ import { Toolbar, type ViewMode } from './Toolbar';
 import { UnsavedTextForm } from './UnsavedTextForm';
 import { useDiagramFlow } from './useDiagramFlow';
 import { useDialogs } from './useDialogs';
-import { useServer } from './useServer';
+import { historyDepth as currentHistoryDepth, useServer } from './useServer';
 
 /** The text and C views, with their editor (CodeMirror), are loaded when first shown. */
 const TextView = lazy(() => import('./TextView').then((m) => ({ default: m.TextView })));
@@ -31,7 +31,7 @@ function setUrlView(view: ViewMode) {
   const params = new URLSearchParams(window.location.search);
   if (view !== 'diagram') params.set('view', view);
   else params.delete('view');
-  window.history.replaceState(null, '', `?${params}`);
+  window.history.replaceState(window.history.state, '', `?${params}`);
 }
 
 /**
@@ -72,7 +72,8 @@ export function App() {
   const [view, setView] = useState<ViewMode>(urlView);
   const textView = useRef<TextViewHandle>(null);
   const [textDirty, setTextDirty] = useState(false);
-  const [leaving, setLeaving] = useState<(() => void) | null>(null);
+  /** Leaving the text view is waiting for Save or Discard; `cancel` undoes the attempt (if needed). */
+  const [leaving, setLeaving] = useState<{ action: () => void; cancel?: () => void } | null>(null);
   const [savingToLeave, setSavingToLeave] = useState(false);
   const changeView = useCallback((next: ViewMode) => {
     setView(next);
@@ -80,11 +81,38 @@ export function App() {
   }, []);
   const unlessUnsaved = useCallback(
     (action: () => void) => {
-      if (view === 'text' && textDirty) setLeaving(() => action);
+      if (view === 'text' && textDirty) setLeaving({ action });
       else action();
     },
     [view, textDirty],
   );
+
+  // Back/Forward in the browser's history (or the toolbar's ←): show that entry's
+  // file, type and view. The address has already changed, so if unsaved text
+  // makes the user cancel, the browser goes back to where it was.
+  const { historyDepth, syncHistoryDepth } = server;
+  useEffect(() => {
+    const onPopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const file = params.get('file');
+      if (!file) return;
+      const before = historyDepth;
+      syncHistoryDepth();
+      const target = urlView();
+      const go = () => {
+        setView(target);
+        open(file, params.get('type') ?? undefined, false);
+      };
+      if (view === 'text' && textDirty && (target !== 'text' || file !== diagram?.file)) {
+        const cameBack = currentHistoryDepth() < before;
+        setLeaving({ action: go, cancel: () => (cameBack ? window.history.forward() : window.history.back()) });
+      } else {
+        go();
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [view, textDirty, diagram?.file, open, historyDepth, syncHistoryDepth]);
 
   // File undo/redo, not while the text has unsaved changes (the editor has its own).
   const undo = useCallback(() => !textDirty && server.undo(), [textDirty, server.undo]);
@@ -238,6 +266,8 @@ export function App() {
         textDirty={textDirty}
         onView={(next) => next !== view && unlessUnsaved(() => changeView(next))}
         onOpenFile={(file) => unlessUnsaved(() => open(file))}
+        canGoBack={historyDepth > 0}
+        onBack={() => window.history.back()}
         onNew={onNew}
         onFileMenu={onFileMenu}
       />
@@ -250,14 +280,18 @@ export function App() {
             const saved = (await textView.current?.save()) ?? true;
             setSavingToLeave(false);
             setLeaving(null);
-            if (saved) leaving();
+            if (saved) leaving.action();
+            else leaving.cancel?.();
           }}
           onDiscard={() => {
             setLeaving(null);
             setTextDirty(false);
-            leaving();
+            leaving.action();
           }}
-          onCancel={() => setLeaving(null)}
+          onCancel={() => {
+            setLeaving(null);
+            leaving.cancel?.();
+          }}
         />
       )}
 

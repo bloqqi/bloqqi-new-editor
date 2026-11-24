@@ -6,6 +6,7 @@ import { ExternalFunctionForm } from './ExternalFunctionForm';
 import { PromptForm } from './PromptForm';
 import type { DiagramMessage } from './protocol';
 import { ParametersForm, type ParameterItem } from './ParametersForm';
+import { useEscape } from './shortcuts';
 import { SuperTypesForm } from './SuperTypesForm';
 import type { Dialogs as DialogState } from './useDialogs';
 
@@ -19,6 +20,16 @@ export function Dialogs({
   diagram: DiagramMessage | null;
   busy: boolean;
 }) {
+  const formOpen = !!(
+    d.prompt ||
+    d.addForm ||
+    d.externalForm ||
+    d.superTypesForm ||
+    d.parametersForm ||
+    d.newFileForm ||
+    d.deleteFileForm
+  );
+  useEscape(formOpen, d.cancelForm);
   return (
     <>
       {d.menu && <ContextMenu screen={d.menu.screen} items={d.menu.items} onClose={d.closeMenu} />}

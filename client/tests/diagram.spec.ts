@@ -834,6 +834,33 @@ test('the palette lists the types a block can be added of', async ({ page }) => 
   await expect(palette.getByTestId('palette-Add')).toBeVisible();
 });
 
+test('Back returns to the type or file shown before', async ({ page }) => {
+  await goto(page, '/?file=TwoCounters.dia&type=Main');
+  const back = page.getByTestId('back');
+  await expect(back).toBeDisabled();
+
+  // Open Declaration, then back.
+  await node(page, 'acc1').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Open Acc' }).click();
+  await expect(page.getByTestId('type-select')).toHaveValue('Acc');
+  await expect(back).toBeEnabled();
+  await back.click();
+  await expect(page.getByTestId('type-select')).toHaveValue('Main');
+  await expect(page).toHaveURL(/type=Main/);
+  await expect(node(page, 'acc1')).toBeVisible();
+  await expect(back).toBeDisabled();
+  // The browser's Forward too.
+  await page.goForward();
+  await expect(page.getByTestId('type-select')).toHaveValue('Acc');
+
+  // Another file, then back.
+  await page.getByTestId('file-select').selectOption('PLib.dia');
+  await expect(page.getByTestId('file-select')).toHaveValue('PLib.dia');
+  await back.click();
+  await expect(page.getByTestId('file-select')).toHaveValue('TwoCounters.dia');
+  await expect(page.getByTestId('type-select')).toHaveValue('Acc');
+});
+
 test('lists of types are sorted by name', async ({ page }) => {
   await goto(page, '/?file=PLib.dia&type=PTrack');
   const sorted = (names: string[]) => [...names].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }));
@@ -981,7 +1008,8 @@ test("a type's own parameters can be reordered and removed; inherited ones come 
   await expect(form).toContainText('None');
   await form.getByRole('button', { name: 'Apply' }).click();
   await expect(form.getByRole('alert')).toContainText('Rid.in was not found');
-  await form.getByRole('button', { name: 'Cancel' }).click();
+  // Escape closes the form, also now that Apply (disabled while waiting) took the focus away.
+  await page.keyboard.press('Escape');
   await expect(form).toHaveCount(0);
 });
 
@@ -1283,6 +1311,28 @@ test.describe.serial('text view', () => {
     await setEditorText(page, original);
     await page.keyboard.press('ControlOrMeta+s');
     await expect.poll(readText).toBe(original);
+  });
+
+  test('going back to another file with unsaved changes asks first', async ({ page }) => {
+    await gotoText(page);
+    await page.getByTestId('file-select').selectOption('TwoCounters.dia');
+    await expect(editor(page)).toContainText('diagramtype Main');
+    await setEditorText(page, '// not saved\n');
+    const form = page.getByTestId('unsaved-text-form');
+    // Cancel: still the same file, with the text, and the address of it.
+    await page.getByTestId('back').click();
+    await expect(form).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(form).toHaveCount(0);
+    await expect(page.getByTestId('file-select')).toHaveValue('TwoCounters.dia');
+    await expect(page).toHaveURL(/file=TwoCounters\.dia/);
+    await expect(editor(page)).toContainText('// not saved');
+    // Discard: back to Text.dia.
+    await page.getByTestId('back').click();
+    await form.getByRole('button', { name: 'Discard' }).click();
+    await expect(page.getByTestId('file-select')).toHaveValue('Text.dia');
+    await expect(editor(page)).toContainText('diagramtype Acc');
+    await expect(page).toHaveURL(/file=Text\.dia/);
   });
 
   test('leaving with unsaved changes asks first', async ({ page }) => {

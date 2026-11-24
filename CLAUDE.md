@@ -120,6 +120,15 @@
 - Client: lists of types and files are shown sorted by name (`names.ts`:
   case-insensitive, numbers by value); the server sends them in file order.
   A type's super types keep their written order, since it matters.
+- Navigation (`useServer`): opening another file or type at the user's request
+  (RequestKind `navigate`: the file and type selects, "Open <Type>") pushes an
+  entry onto the browser's history; everything else replaces the current one.
+  Entries carry `{bloqqiDepth}`, so the toolbar's ← (`history.back()`) is
+  enabled only when there is an editor entry to return to. `App` follows
+  `popstate` (Back/Forward) and opens that entry's file, type and view; with
+  unsaved text in the text view it asks first, and Cancel moves the browser
+  back to where it was. Escape closes an open form wherever the focus is
+  (`useEscape`), e.g. after a refused Apply took the focus away.
 - Client: right-click menus (`ContextMenu.tsx`) for nodes, connections and
   the canvas; double-click or F2 opens Rename/Change value (`PromptForm.tsx`).
 - Edits are checked by reparsing before anything is written; an edit that adds

@@ -57,3 +57,26 @@ export function useRenameKey(nodes: DiagramFlowNode[], editNode: (node: DiagramF
     return () => window.removeEventListener('keydown', onKey);
   }, [nodes, editNode]);
 }
+
+/**
+ * Escape while `active` (a form is open), wherever the focus is: a form
+ * handles Escape itself while it has the focus, but not after it lost it (e.g.
+ * its Apply button was disabled while the server answered, and refused).
+ */
+export function useEscape(active: boolean, onEscape: () => void) {
+  const latest = useRef(onEscape);
+  useLayoutEffect(() => {
+    latest.current = onEscape;
+  }, [onEscape]);
+  useEffect(() => {
+    if (!active) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented) {
+        e.preventDefault();
+        latest.current();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [active]);
+}

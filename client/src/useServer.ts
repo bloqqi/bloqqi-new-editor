@@ -18,12 +18,15 @@ export type Status = 'connecting' | 'open' | 'reconnecting';
 /**
  * What a request was for. The server answers requests in order, so a queue of
  * these tells what each answer ("diagram", "problems", "cCode" or "error") belongs to.
+ * A "navigate" request opens another file or type at the user's request (a
+ * new entry in the browser's history, so that Back returns); an "open" request
+ * opens one without that (on connecting, or when going back).
  * A "form" request is an edit submitted from a form, which is told the
  * outcome; a "query" request only asks for something (the problems of the text
  * view's text, the generated C code) and changes nothing that is shown
  * (it does not count as pending: nothing waits for it).
  */
-export type RequestKind = 'open' | 'edit' | 'form' | 'undo' | 'redo' | 'query';
+export type RequestKind = 'open' | 'navigate' | 'edit' | 'form' | 'undo' | 'redo' | 'query';
 
 /** An answer to a request. */
 export type Answer = DiagramMessage | ProblemsMessage | CCodeMessage | ErrorMessage;
@@ -46,14 +49,33 @@ const defaultKind = (message: ClientMessage): RequestKind =>
 const RECONNECT_MIN_MS = 500;
 const RECONNECT_MAX_MS = 10_000;
 
-/** Keeps ?file=…&type=…(&view=text) in the address bar so a view can be reloaded or linked. */
-function updateUrl(file: string, diagramType: string | null) {
-  const view = new URLSearchParams(window.location.search).get('view');
+/**
+ * How many of the editor's own navigations lead back from the current entry of
+ * the browser's history (kept in the entries' state, so it survives a reload).
+ */
+export function historyDepth(): number {
+  const state = window.history.state as { bloqqiDepth?: number } | null;
+  return state?.bloqqiDepth ?? 0;
+}
+
+/**
+ * Keeps ?file=…&type=…(&view=…) in the address bar so a view can be reloaded
+ * or linked. A navigation to another file or type adds an entry to the
+ * browser's history (so that Back returns), anything else replaces it.
+ */
+function updateUrl(file: string, diagramType: string | null, navigation: boolean) {
+  const current = new URLSearchParams(window.location.search);
   const params = new URLSearchParams();
   params.set('file', file);
   if (diagramType) params.set('type', diagramType);
+  const view = current.get('view');
   if (view) params.set('view', view);
-  window.history.replaceState(null, '', `?${params}`);
+  const moved = current.get('file') !== file || (current.get('type') ?? null) !== diagramType;
+  if (navigation && moved) {
+    window.history.pushState({ bloqqiDepth: historyDepth() + 1 }, '', `?${params}`);
+  } else {
+    window.history.replaceState({ bloqqiDepth: historyDepth() }, '', `?${params}`);
+  }
 }
 
 export interface Server {
@@ -69,7 +91,15 @@ export interface Server {
   send: (message: ClientMessage, kind?: RequestKind) => void;
   /** Sends a request and resolves with its answer. */
   request: (message: ClientMessage, kind?: RequestKind) => Promise<Answer>;
-  open: (file: string, diagramType?: string) => void;
+  /**
+   * Opens a file (and type). By default a navigation, which Back returns from;
+   * `navigation = false` when following the browser's history.
+   */
+  open: (file: string, diagramType?: string, navigation?: boolean) => void;
+  /** How many navigations Back can return through (see historyDepth). */
+  historyDepth: number;
+  /** Reads historyDepth again (after the browser moved in its history). */
+  syncHistoryDepth: () => void;
   /** Requests sent but not yet answered (not counting queries). */
   pendingCount: number;
   canUndo: boolean;
@@ -148,9 +178,12 @@ export function useServer(onFormAnswered: (error: string | null) => void): Serve
   }, [countPending]);
 
   const open = useCallback(
-    (file: string, diagramType?: string) => send({ type: 'open', file, diagramType }),
+    (file: string, diagramType?: string, navigation = true) =>
+      send({ type: 'open', file, diagramType }, navigation ? 'navigate' : 'open'),
     [send],
   );
+  const [depth, setDepth] = useState(historyDepth);
+  const syncHistoryDepth = useCallback(() => setDepth(historyDepth()), []);
 
   // One WebSocket at a time. If it closes (server restart, network change,
   // laptop sleep), reconnect with backoff; the "workspace" message on the new
@@ -211,7 +244,8 @@ export function useServer(onFormAnswered: (error: string | null) => void): Serve
             if (request?.kind === 'form') formAnswered.current(null);
             setDiagram(message);
             setError(null);
-            updateUrl(message.file, message.diagramType);
+            updateUrl(message.file, message.diagramType, request?.kind === 'navigate');
+            setDepth(historyDepth());
             request?.resolve?.(message);
             break;
           }
@@ -225,7 +259,7 @@ export function useServer(onFormAnswered: (error: string | null) => void): Serve
             history.current.clear(message.file);
             historyChanged();
             setDiagram({ ...message, type: 'diagram' });
-            updateUrl(message.file, message.diagramType);
+            updateUrl(message.file, message.diagramType, false);
             showNotice(`${message.file} was changed outside this tab, so it has been reloaded.`, 5000);
             break;
           }
@@ -307,6 +341,8 @@ export function useServer(onFormAnswered: (error: string | null) => void): Serve
     send,
     request,
     open,
+    historyDepth: depth,
+    syncHistoryDepth,
     pendingCount,
     canUndo,
     canRedo,
