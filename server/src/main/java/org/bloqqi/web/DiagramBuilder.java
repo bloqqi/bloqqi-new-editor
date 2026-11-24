@@ -73,7 +73,7 @@ public final class DiagramBuilder {
 		problems.addAll(file.semanticErrors());
 		if (!file.isParsed()) {
 			return new Diagram(file.fileName(), null, List.of(), List.of(), List.of(), problems,
-					DiagramEdits.readOnlyReason(file), List.of(), List.of());
+					SourceEdits.readOnlyReason(file), List.of(), List.of());
 		}
 
 		CompilationUnit cu = file.compilationUnit();
@@ -85,9 +85,9 @@ public final class DiagramBuilder {
 						"No diagram type " + diagramTypeName + " in " + file.fileName());
 			}
 			return new Diagram(file.fileName(), null, names, List.of(), List.of(), problems,
-					DiagramEdits.readOnlyReason(file), List.of(), List.of());
+					SourceEdits.readOnlyReason(file), List.of(), List.of());
 		}
-		String readOnly = DiagramEdits.readOnlyReason(file);
+		String readOnly = SourceEdits.readOnlyReason(file);
 		if (readOnly == null && dt instanceof AnonymousDiagramType a) {
 			readOnly = anonymousReadOnly(a);
 		}

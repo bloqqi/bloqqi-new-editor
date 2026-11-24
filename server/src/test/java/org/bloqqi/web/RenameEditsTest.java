@@ -61,7 +61,7 @@ public class RenameEditsTest {
 	@Test
 	public void renamingABlockUpdatesItsUsesEverywhere() throws Exception {
 		String before = source("PLib.dia");
-		String after = DiagramEdits.rename(load("PLib.dia", before), "P", "e", "err");
+		String after = RenameEdits.rename(load("PLib.dia", before), "P", "e", "err");
 
 		String p = typeText(after, "P");
 		assertTrue(p, p.contains("  err: RSub;"));
@@ -88,7 +88,7 @@ public class RenameEditsTest {
 	@Test
 	public void aSimpleNamedBlockGetsAnOrdinaryDeclaration() throws Exception {
 		// PTrack: SelReal_1; connect(Track, SelReal_1.sel); intercept Out with SelReal_1.in2, SelReal_1.out;
-		String after = DiagramEdits.rename(load("PLib.dia", source("PLib.dia")), "PTrack", "SelReal_1", "selector");
+		String after = RenameEdits.rename(load("PLib.dia", source("PLib.dia")), "PTrack", "SelReal_1", "selector");
 		String ptrack = typeText(after, "PTrack");
 		assertTrue(ptrack, ptrack.contains("  selector: SelReal;\n"));
 		assertTrue(ptrack, ptrack.contains("connect(Track, selector.sel);"));
@@ -103,7 +103,7 @@ public class RenameEditsTest {
 	@Test
 	public void renamingAVariable() throws Exception {
 		String before = source("TwoCounters.dia");
-		String after = DiagramEdits.rename(load("TwoCounters.dia", before), "Acc", "state", "total");
+		String after = RenameEdits.rename(load("TwoCounters.dia", before), "Acc", "state", "total");
 		assertEquals(before.replace("var state: Int;", "var total: Int;")
 				.replace("connect(state, add.in2);", "connect(total, add.in2);")
 				.replace("connect(add.out, state);", "connect(add.out, total);"), after);
@@ -114,7 +114,7 @@ public class RenameEditsTest {
 	public void renamingAParameterUpdatesPortUsesInOtherTypes() throws Exception {
 		// Main connects 1 and 2 to acc1.in and acc2.in, blocks of type Acc.
 		String before = source("TwoCounters.dia");
-		String after = DiagramEdits.rename(load("TwoCounters.dia", before), "Acc", "in", "start");
+		String after = RenameEdits.rename(load("TwoCounters.dia", before), "Acc", "in", "start");
 		assertEquals(before.replace("Acc(in: Int => out: Int)", "Acc(start: Int => out: Int)")
 				.replace("connect(in, add.in1);", "connect(start, add.in1);")
 				.replace("connect(1, acc1.in);", "connect(1, acc1.start);")
@@ -125,7 +125,7 @@ public class RenameEditsTest {
 	@Test
 	public void typeFirstParametersAreRenamedToo() throws Exception {
 		// InlineExample: diagramtype FeedForward(Int In, Int Gain, Int FV => Int Out)
-		String after = DiagramEdits.rename(load("InlineExample.dia", source("InlineExample.dia")),
+		String after = RenameEdits.rename(load("InlineExample.dia", source("InlineExample.dia")),
 				"FeedForward", "In", "Input");
 		assertTrue(after.contains("diagramtype FeedForward(Int Input, Int Gain, Int FV => Int Out) {"));
 		assertCleanParse(load("InlineExample.dia", after));
@@ -134,17 +134,17 @@ public class RenameEditsTest {
 	@Test
 	public void renamesThatWouldClashAreRefused() throws Exception {
 		LoadedFile file = load("PLib.dia", source("PLib.dia"));
-		assertRefused("Not a valid name", () -> DiagramEdits.rename(file, "P", "e", "2e"));
-		assertRefused("already used", () -> DiagramEdits.rename(file, "P", "e", "PPart"));
-		assertRefused("already used", () -> DiagramEdits.rename(file, "P", "e", "Out"));
+		assertRefused("Not a valid name", () -> RenameEdits.rename(file, "P", "e", "2e"));
+		assertRefused("already used", () -> RenameEdits.rename(file, "P", "e", "PPart"));
+		assertRefused("already used", () -> RenameEdits.rename(file, "P", "e", "Out"));
 		// The subtype PI has its own block Rid, and writes connect(e.out, IPart.e):
 		// renamed, "Rid.out" there would mean PI's Rid.
-		assertRefused("already means something else", () -> DiagramEdits.rename(file, "P", "e", "Rid"));
+		assertRefused("already means something else", () -> RenameEdits.rename(file, "P", "e", "Rid"));
 		// PTrack has its own SelReal_1 but no unqualified use of e: allowed (P's
 		// block is then P::SelReal_1 in PTrack, as Bloqqi allows).
-		assertCleanParse(load("PLib.dia", DiagramEdits.rename(file, "P", "e", "SelReal_1")));
-		assertRefused("cannot be renamed here", () -> DiagramEdits.rename(file, "PTrack", "P::e", "x"));
-		assertEquals("same name: no change", file.source(), DiagramEdits.rename(file, "P", "e", "e"));
+		assertCleanParse(load("PLib.dia", RenameEdits.rename(file, "P", "e", "SelReal_1")));
+		assertRefused("cannot be renamed here", () -> RenameEdits.rename(file, "PTrack", "P::e", "x"));
+		assertEquals("same name: no change", file.source(), RenameEdits.rename(file, "P", "e", "e"));
 	}
 
 	/** Every renamable node in every example can be renamed (or is refused with a reason). */
@@ -164,7 +164,7 @@ public class RenameEditsTest {
 					}
 					String newName = n.id() + "Renamed";
 					try {
-						LoadedFile after = load(f, DiagramEdits.rename(file, type, n.id(), newName));
+						LoadedFile after = load(f, RenameEdits.rename(file, type, n.id(), newName));
 						assertCleanParse(after);
 						Diagram d = DiagramBuilder.build(after, type);
 						assertTrue(f + " " + type + " " + n.id(), d.nodes().stream().anyMatch(x -> x.id().equals(newName)));
@@ -185,11 +185,11 @@ public class RenameEditsTest {
 	public void changingALiteralsValue() throws Exception {
 		String before = source("TwoCounters.dia");
 		LoadedFile file = load("TwoCounters.dia", before);
-		String after = DiagramEdits.setLiteral(file, "Main", "#literal:acc1.in:in", " 15 ");
+		String after = NodeEdits.setLiteral(file, "Main", "#literal:acc1.in:in", " 15 ");
 		assertEquals(before.replace("connect(1, acc1.in);", "connect(15, acc1.in);"), after);
-		assertRefused("Not a literal", () -> DiagramEdits.setLiteral(file, "Main", "#literal:acc1.in:in", "x"));
-		assertRefused("Not allowed", () -> DiagramEdits.setLiteral(file, "Main", "#literal:acc1.in:in", "true"));
-		assertRefused("No literal", () -> DiagramEdits.setLiteral(file, "Main", "nosuch", "3"));
+		assertRefused("Not a literal", () -> NodeEdits.setLiteral(file, "Main", "#literal:acc1.in:in", "x"));
+		assertRefused("Not allowed", () -> NodeEdits.setLiteral(file, "Main", "#literal:acc1.in:in", "true"));
+		assertRefused("No literal", () -> NodeEdits.setLiteral(file, "Main", "nosuch", "3"));
 	}
 
 	// ----- Auto layout -----
@@ -197,7 +197,7 @@ public class RenameEditsTest {
 	@Test
 	public void autoLayoutStoresAFreshLayout() throws Exception {
 		LoadedFile file = load("PLib.dia", source("PLib.dia"));
-		String after = DiagramEdits.autoLayout(file, "IPart");
+		String after = LayoutEdits.autoLayout(file, "IPart");
 		LoadedFile reparsed = load("PLib.dia", after);
 		assertCleanParse(reparsed);
 		Map<String, DiagramNode> before = nodes(file, "IPart");

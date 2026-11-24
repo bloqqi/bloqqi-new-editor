@@ -12,7 +12,7 @@ import java.util.List;
  * @param edges        one edge per connection in {@code DiagramType.getConnections()}
  * @param problems     syntax and semantic errors of the whole file
  * @param readOnly     why the diagram cannot be edited, or null if it can
- *                     ({@link DiagramEdits#readOnlyReason})
+ *                     ({@link SourceEdits#readOnlyReason})
  * @param palette      the types a block can be added of, in the old editor's order
  * @param superTypes   the names in the shown type's {@code extends} clause
  */

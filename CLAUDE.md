@@ -43,11 +43,11 @@
 - Layout: ELK (layered, fixed port order, orthogonal edges). Stored positions
   from the file's `annotation(...)` blocks take precedence; ELK is used when a
   diagram type has none. Moving nodes writes the type's `annotation(...)` block
-  (`DiagramEdits.moveNodes`): the first move stores the whole current layout of
+  (`LayoutEdits.moveNodes`): the first move stores the whole current layout of
   the type, inherited nodes get `Super::name` entries in the subtype, literals
   are never stored. Only that block is spliced into the text (via AST source
   positions, `SourceText`); comments and formatting elsewhere are kept.
-- Connections (`DiagramEdits.connect` / `deleteConnections`): dragging from an
+- Connections (`ConnectionEdits.connect` / `DeleteEdits.deleteConnections`): dragging from an
   output handle to an input handle appends `connect(a, b);` to the type's body
   (indented like the last statement; braces found with the scanner's tokens).
   Invalid connections are refused, not just coloured as in the old editor:
@@ -56,7 +56,7 @@
   dataflow cycle. Deleting removes the declaring statement (the whole
   `intercept` for an interception half) and its line. Not supported yet:
   literals, struct-field connections (`a.status.level`), inlined-block ports.
-- Blocks (`DiagramEdits.addBlock` / `delete`): dragging a palette type onto
+- Blocks (`NodeEdits.addBlock` / `DeleteEdits.delete`): dragging a palette type onto
   the canvas inserts `Type_N;` (first free N) after the last variable/block
   declaration (the grammar puts blocks before connections) and stores the
   whole layout with the new block at the drop point. Deleting a block removes
@@ -80,7 +80,7 @@
   rewrites the header with the type's own parameters in a new order, from
   their own text; ones left out are deleted as above. Inherited parameters
   come first (super types' order) and are only listed.
-- Rename (`DiagramEdits.rename`): the declaration and every use in the file
+- Rename (`RenameEdits.rename`): the declaration and every use in the file
   (`x`, `x.in1`, `P::x`, annotation keys, and port uses `blk.p` for a
   parameter) are found by walking all `VarUse`s and following `decl()`
   through inheritance wrappers (and from a port to its parameter), then
@@ -108,7 +108,7 @@
   they are not on the undo history. New file names: letters, digits, space,
   `_`, `-`, `.`, ending with `.dia`.
 - Interception (right-click an inherited connection, spec §3.7):
-  `DiagramEdits.intercept` appends `intercept X with T, S;` (X the
+  `ConnectionEdits.intercept` appends `intercept X with T, S;` (X the
   connection's target) or `intercept source X with T, S;` (X its source); T a
   free input, S an output. The compiler matches X by its fully qualified name
   and checks the types. As in the old editor (InterceptTool), the client
@@ -157,6 +157,13 @@
   (`useEscape`), e.g. after a refused Apply took the focus away.
 - Client: right-click menus (`ContextMenu.tsx`) for nodes, connections and
   the canvas; double-click or F2 opens Rename/Change value (`PromptForm.tsx`).
+- Server edits, one class per kind, each returning the new text (nothing is
+  written): `SourceEdits` (the shared text machinery: `TextEdit`/`apply`,
+  positions of headers, bodies, statements and annotation blocks,
+  `insertStatement`, the reparse `check`, `readOnlyReason`), `LayoutEdits`,
+  `NodeEdits`, `ConnectionEdits`, `DeleteEdits`, `RenameEdits`, `TypeEdits` and
+  `FeatureEdits`. They stay in the server's package, because they use its
+  package-private model (`DiagramBuilder`, `Layout`, `SourceText`).
 - Edits are checked by reparsing before anything is written; an edit that adds
   syntax errors or more semantic errors is refused. Files with syntax errors
   are not edited. Writes go through a temp file and an atomic move.

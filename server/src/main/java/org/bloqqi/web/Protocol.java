@@ -114,7 +114,7 @@ final class Protocol {
 	}
 
 	/** Move nodes of a diagram type and save the file. */
-	record MoveRequest(String file, String diagramType, List<DiagramEdits.Move> moves) implements Request {
+	record MoveRequest(String file, String diagramType, List<LayoutEdits.Move> moves) implements Request {
 	}
 
 	/** Connect two handles and save the file. */
@@ -164,7 +164,7 @@ final class Protocol {
 
 	/** Add an external function; keep showing {@code diagramType} (may be null). */
 	record AddExternalFunctionRequest(String file, String diagramType, String name,
-			List<DiagramEdits.Parameter> inputs, DiagramEdits.Parameter output) implements Request {
+			List<TypeEdits.Parameter> inputs, TypeEdits.Parameter output) implements Request {
 	}
 
 	/** Rename a diagram type or external function; {@code diagramType} is the shown one. */
@@ -260,10 +260,10 @@ final class Protocol {
 			if (diagramType == null || nodes == null || !nodes.isJsonArray()) {
 				throw new IllegalArgumentException("move needs diagramType and nodes");
 			}
-			List<DiagramEdits.Move> moves = new ArrayList<>();
+			List<LayoutEdits.Move> moves = new ArrayList<>();
 			for (JsonElement e : nodes.getAsJsonArray()) {
 				JsonObject n = e.getAsJsonObject();
-				moves.add(new DiagramEdits.Move(string(n, "id"), integer(n, "x"), integer(n, "y")));
+				moves.add(new LayoutEdits.Move(string(n, "id"), integer(n, "x"), integer(n, "y")));
 			}
 			return new MoveRequest(string(o, "file"), diagramType, moves);
 		}
@@ -310,7 +310,7 @@ final class Protocol {
 			return new AddDiagramTypeRequest(string(o, "file"), required(o, "name"));
 		}
 		if ("addExternalFunction".equals(type)) {
-			List<DiagramEdits.Parameter> inputs = new ArrayList<>();
+			List<TypeEdits.Parameter> inputs = new ArrayList<>();
 			JsonElement in = o.get("inputs");
 			if (in != null && in.isJsonArray()) {
 				for (JsonElement e : in.getAsJsonArray()) {
@@ -573,8 +573,8 @@ final class Protocol {
 		return new DiagramBuilder.Endpoint(required(e.getAsJsonObject(), "node"), required(e.getAsJsonObject(), "handle"));
 	}
 
-	private static DiagramEdits.Parameter parameter(JsonObject o) {
-		return new DiagramEdits.Parameter(required(o, "name"), required(o, "typeName"));
+	private static TypeEdits.Parameter parameter(JsonObject o) {
+		return new TypeEdits.Parameter(required(o, "name"), required(o, "typeName"));
 	}
 
 	/** An optional array of strings (empty if missing). */

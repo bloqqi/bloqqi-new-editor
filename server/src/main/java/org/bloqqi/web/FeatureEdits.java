@@ -21,7 +21,7 @@ import org.bloqqi.compiler.ast.InheritedConnection;
 import org.bloqqi.compiler.ast.Node;
 import org.bloqqi.compiler.ast.Port;
 import org.bloqqi.compiler.ast.TypeDecl;
-import org.bloqqi.web.DiagramEdits.TextEdit;
+import org.bloqqi.web.SourceEdits.TextEdit;
 
 /**
  * Feature selection (docs/editor-spec.md §4.1): a diagram type B can declare
@@ -90,7 +90,7 @@ final class FeatureEdits {
 	 *         two features exclude each other, or the edit adds errors
 	 */
 	static String setFeatures(LoadedFile file, String diagramTypeName, String blockId, List<String> features) {
-		DiagramEdits.requireEditable(file);
+		SourceEdits.requireEditable(file);
 		DiagramBuilder.Builder diagram = DiagramBuilder.resolve(file, diagramTypeName);
 		Block declared = declaredBlock(file, diagramTypeName, blockId);
 		DiagramType base = requireBase(declared, blockId);
@@ -126,7 +126,7 @@ final class FeatureEdits {
 		}
 
 		// Connections on ports the block will no longer have.
-		LoadedFile changed = BloqqiLoader.load(file.fileName(), DiagramEdits.apply(file.source(), edits));
+		LoadedFile changed = BloqqiLoader.load(file.fileName(), SourceEdits.apply(file.source(), edits));
 		Set<String> ports = changed.isParsed() ? portHandles(changed, diagramTypeName, blockId) : null;
 		DiagramType dt = diagram.diagramType();
 		if (ports != null) {
@@ -135,7 +135,7 @@ final class FeatureEdits {
 				String gone = goneEnd(c, blockId, ports);
 				if (gone != null && DiagramBuilder.isDeletable(c, dt) && removed.add(c.getDeclaredFlowDecl())) {
 					ASTNode<?> d = c.getDeclaredFlowDecl();
-					int[] r = DiagramEdits.statementLines(source, source.start(d), source.end(d));
+					int[] r = SourceEdits.statementLines(source, source.start(d), source.end(d));
 					edits.add(new TextEdit(r[0], r[1], ""));
 				}
 			}
@@ -143,15 +143,15 @@ final class FeatureEdits {
 		// A stored size: the height that fits the block's ports now.
 		Integer height = changed.isParsed() ? newHeight(diagram, changed, diagramTypeName, blockId) : null;
 		if (height != null) {
-			TreeMap<String, Layout.Rect> entries = DiagramEdits.annotations(source, dt);
+			TreeMap<String, Layout.Rect> entries = SourceEdits.annotations(source, dt);
 			Layout.Rect r = entries.get(blockId);
 			if (r != null && r.height() != height) {
 				entries.put(blockId, new Layout.Rect(r.x(), r.y(), r.width(), height));
-				edits.add(DiagramEdits.annotationEdit(source, dt, entries));
+				edits.add(SourceEdits.annotationEdit(source, dt, entries));
 			}
 		}
-		String newText = DiagramEdits.apply(file.source(), edits);
-		DiagramEdits.check(file, newText);
+		String newText = SourceEdits.apply(file.source(), edits);
+		SourceEdits.check(file, newText);
 		return newText;
 	}
 
@@ -185,12 +185,12 @@ final class FeatureEdits {
 		List<TextEdit> edits = new ArrayList<>();
 		if (declared.hasAnonymousDiagramType()) {
 			AnonymousDiagramType adt = declared.anonymousDiagramType();
-			int[] braces = DiagramEdits.bodyBraces(source, adt);
+			int[] braces = SourceEdits.bodyBraces(source, adt);
 			// The existing feature uses go; the new ones are written first in the braces.
 			List<int[]> uses = new ArrayList<>();
 			for (FeatureUse use : adt.getFeatureUses()) {
-				int end = DiagramEdits.semicolonAfter(text, source.end(use), braces[1]);
-				uses.add(DiagramEdits.statementLines(source, source.start(use), end));
+				int end = SourceEdits.semicolonAfter(text, source.end(use), braces[1]);
+				uses.add(SourceEdits.statementLines(source, source.start(use), end));
 			}
 			String rest = withoutRanges(text.substring(braces[0] + 1, braces[1]), braces[0] + 1, uses);
 			if (rest.isBlank()) {

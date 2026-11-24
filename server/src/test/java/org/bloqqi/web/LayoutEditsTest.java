@@ -15,11 +15,11 @@ import java.util.stream.Collectors;
 import org.bloqqi.compiler.ast.DiagramType;
 import org.bloqqi.compiler.ast.TypeDecl;
 import org.bloqqi.web.Diagram.DiagramNode;
-import org.bloqqi.web.DiagramEdits.Move;
+import org.bloqqi.web.LayoutEdits.Move;
 import org.junit.Test;
 
 /** Moving nodes: the new text reparses, and the AST and diagram are as expected. */
-public class DiagramEditsTest {
+public class LayoutEditsTest {
 
 	private static String source(String fileName) throws Exception {
 		return Files.readString(Examples.dir().resolve(fileName), StandardCharsets.UTF_8);
@@ -59,7 +59,7 @@ public class DiagramEditsTest {
 		String before = source("PLib.dia");
 		LoadedFile file = load("PLib.dia", before);
 
-		String after = DiagramEdits.moveNodes(file, "P", List.of(new Move("e", 200, 100)));
+		String after = LayoutEdits.moveNodes(file, "P", List.of(new Move("e", 200, 100)));
 
 		// PLib.dia was written by the old editor (sorted, complete annotations),
 		// so the only change is e's line.
@@ -75,7 +75,7 @@ public class DiagramEditsTest {
 	@Test
 	public void parametersAndVariablesCanBeMoved() throws Exception {
 		LoadedFile file = load("PLib.dia", source("PLib.dia"));
-		String after = DiagramEdits.moveNodes(file, "IPart",
+		String after = LayoutEdits.moveNodes(file, "IPart",
 				List.of(new Move("K", 5, 300), new Move("iPart", 400, 300)));
 		Map<String, DiagramNode> nodes = nodes(load("PLib.dia", after), "IPart");
 		assertPosition(nodes.get("K"), 5, 300);
@@ -88,7 +88,7 @@ public class DiagramEditsTest {
 		LoadedFile file = load("TwoCounters.dia", before);
 		Map<String, DiagramNode> old = nodes(file, "Main");
 
-		String after = DiagramEdits.moveNodes(file, "Main", List.of(new Move("acc1", 300, 200)));
+		String after = LayoutEdits.moveNodes(file, "Main", List.of(new Move("acc1", 300, 200)));
 
 		LoadedFile reparsed = load("TwoCounters.dia", after);
 		assertCleanParse(reparsed);
@@ -109,7 +109,7 @@ public class DiagramEditsTest {
 	@Test
 	public void inheritedNodesGetTheirOwnEntryInTheSubtype() throws Exception {
 		LoadedFile file = load("PLib.dia", source("PLib.dia"));
-		String after = DiagramEdits.moveNodes(file, "PTrack", List.of(new Move("P::e", 10, 150)));
+		String after = LayoutEdits.moveNodes(file, "PTrack", List.of(new Move("P::e", 10, 150)));
 
 		LoadedFile reparsed = load("PLib.dia", after);
 		assertCleanParse(reparsed);
@@ -122,7 +122,7 @@ public class DiagramEditsTest {
 	public void annotationGoesBeforeWiring() throws Exception {
 		// FeedForward has a wiring declaration and no annotations.
 		LoadedFile file = load("InlineExample.dia", source("InlineExample.dia"));
-		String after = DiagramEdits.moveNodes(file, "FeedForward", List.of(new Move("Mul_1", 100, 50)));
+		String after = LayoutEdits.moveNodes(file, "FeedForward", List.of(new Move("Mul_1", 100, 50)));
 
 		LoadedFile reparsed = load("InlineExample.dia", after);
 		assertCleanParse(reparsed);
@@ -135,7 +135,7 @@ public class DiagramEditsTest {
 	@Test
 	public void inlinedNodesCanBeMoved() throws Exception {
 		LoadedFile file = load("InlineExample.dia", source("InlineExample.dia"));
-		String after = DiagramEdits.moveNodes(file, "Tank",
+		String after = LayoutEdits.moveNodes(file, "Tank",
 				List.of(new Move("loop$master$controller", 160, 120)));
 		LoadedFile reparsed = load("InlineExample.dia", after);
 		assertCleanParse(reparsed);
@@ -151,7 +151,7 @@ public class DiagramEditsTest {
 		String block = DiagramBuilder.build(file, type).nodes().stream()
 				.filter(n -> n.kind().equals(Diagram.BLOCK)).findFirst().orElseThrow().id();
 
-		String after = DiagramEdits.moveNodes(file, type, List.of(new Move(block, 7, 7)));
+		String after = LayoutEdits.moveNodes(file, type, List.of(new Move(block, 7, 7)));
 
 		for (String line : before.split("\n")) {
 			if (line.contains("//")) {
@@ -164,7 +164,7 @@ public class DiagramEditsTest {
 	@Test
 	public void windowsLineEndingsAreKept() throws Exception {
 		String before = source("TwoCounters.dia").replace("\n", "\r\n");
-		String after = DiagramEdits.moveNodes(load("TwoCounters.dia", before), "Acc",
+		String after = LayoutEdits.moveNodes(load("TwoCounters.dia", before), "Acc",
 				List.of(new Move("add", 50, 50)));
 		assertFalse("no bare \\n", after.replace("\r\n", "").contains("\n"));
 		assertPosition(nodes(load("TwoCounters.dia", after), "Acc").get("add"), 50, 50);
@@ -175,7 +175,7 @@ public class DiagramEditsTest {
 		LoadedFile file = load("TwoCounters.dia", source("TwoCounters.dia"));
 		for (String id : List.of("#literal:acc1.in:in", "nosuch")) {
 			try {
-				DiagramEdits.moveNodes(file, "Main", List.of(new Move(id, 1, 1)));
+				LayoutEdits.moveNodes(file, "Main", List.of(new Move(id, 1, 1)));
 				fail("expected IllegalArgumentException for " + id);
 			} catch (IllegalArgumentException expected) {
 				assertTrue(expected.getMessage().contains(id));
@@ -190,13 +190,13 @@ public class DiagramEditsTest {
 		LoadedFile file = load("TwoCounters.dia", source("TwoCounters.dia"));
 		for (Move m : List.of(new Move("add", -30, 10), new Move("add", 10, -1))) {
 			try {
-				DiagramEdits.moveNodes(file, "Acc", List.of(m));
+				LayoutEdits.moveNodes(file, "Acc", List.of(m));
 				fail("expected IllegalArgumentException for " + m);
 			} catch (IllegalArgumentException expected) {
 				assertTrue(expected.getMessage(), expected.getMessage().contains("must not be negative"));
 			}
 		}
-		assertPosition(nodes(load("TwoCounters.dia", DiagramEdits.moveNodes(file, "Acc",
+		assertPosition(nodes(load("TwoCounters.dia", LayoutEdits.moveNodes(file, "Acc",
 				List.of(new Move("add", 0, 0)))), "Acc").get("add"), 0, 0);
 	}
 
@@ -212,7 +212,7 @@ public class DiagramEditsTest {
 	public void filesWithSyntaxErrorsAreNotEdited() {
 		LoadedFile file = load("x.dia", "diagramtype A { a: Add; connect(a.out, b) }");
 		try {
-			DiagramEdits.moveNodes(file, "A", List.of(new Move("a", 1, 1)));
+			LayoutEdits.moveNodes(file, "A", List.of(new Move("a", 1, 1)));
 			fail("expected IllegalArgumentException");
 		} catch (IllegalArgumentException expected) {
 			assertTrue(expected.getMessage().contains("syntax errors"));
@@ -231,7 +231,7 @@ public class DiagramEditsTest {
 					if (n.kind().equals(Diagram.LITERAL)) {
 						continue;
 					}
-					String after = DiagramEdits.moveNodes(file, type, List.of(new Move(n.id(), n.x() + 13, n.y() + 17)));
+					String after = LayoutEdits.moveNodes(file, type, List.of(new Move(n.id(), n.x() + 13, n.y() + 17)));
 					LoadedFile reparsed = load(f, after);
 					assertCleanParse(reparsed);
 					DiagramNode m = nodes(reparsed, type).get(n.id());

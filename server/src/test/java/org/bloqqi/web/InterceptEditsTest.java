@@ -52,7 +52,7 @@ public class InterceptEditsTest {
 	/** PLib.dia without PTrack's "intercept Out with SelReal_1.in2, SelReal_1.out;". */
 	private static LoadedFile withoutInterception() throws Exception {
 		LoadedFile file = load(source("PLib.dia"));
-		String text = DiagramEdits.deleteConnections(file, "PTrack", List.of("P::PPart.out:out->SelReal_1.in:in2"));
+		String text = DeleteEdits.deleteConnections(file, "PTrack", List.of("P::PPart.out:out->SelReal_1.in:in2"));
 		LoadedFile without = load(text);
 		assertTrue("the inherited connection is back", edgeIds(without, "PTrack").contains(P_OUT));
 		return without;
@@ -65,7 +65,7 @@ public class InterceptEditsTest {
 				.filter(e -> e.id().equals(P_OUT)).findFirst().orElseThrow();
 		assertTrue(inherited.interceptable());
 
-		String after = DiagramEdits.intercept(withoutInterception(), "PTrack", P_OUT, false, SEL_IN2, SEL_OUT);
+		String after = ConnectionEdits.intercept(withoutInterception(), "PTrack", P_OUT, false, SEL_IN2, SEL_OUT);
 
 		assertTrue(after.contains("  connect(TrackValue, SelReal_1.in1);\n  intercept Out with SelReal_1.in2, SelReal_1.out;\n}"));
 		LoadedFile reparsed = load(after);
@@ -76,7 +76,7 @@ public class InterceptEditsTest {
 
 	@Test
 	public void interceptingAtTheSource() throws Exception {
-		String after = DiagramEdits.intercept(withoutInterception(), "PTrack", P_OUT, true, SEL_IN2, SEL_OUT);
+		String after = ConnectionEdits.intercept(withoutInterception(), "PTrack", P_OUT, true, SEL_IN2, SEL_OUT);
 		assertTrue(after.contains("  intercept source PPart.out with SelReal_1.in2, SelReal_1.out;\n}"));
 		LoadedFile reparsed = load(after);
 		assertCleanParse(reparsed);
@@ -89,10 +89,10 @@ public class InterceptEditsTest {
 	public void onlyInheritedConnectionsCanBeIntercepted() throws Exception {
 		LoadedFile file = withoutInterception();
 		assertRefused("Only inherited connections",
-				() -> DiagramEdits.intercept(file, "PTrack", "Track.out->SelReal_1.in:sel", false, SEL_IN2, SEL_OUT));
+				() -> ConnectionEdits.intercept(file, "PTrack", "Track.out->SelReal_1.in:sel", false, SEL_IN2, SEL_OUT));
 		assertTrue(DiagramBuilder.build(file, "PTrack").edges().stream()
 				.filter(e -> e.id().equals("Track.out->SelReal_1.in:sel")).noneMatch(DiagramEdge::interceptable));
-		assertRefused("No connection", () -> DiagramEdits.intercept(file, "PTrack", "nosuch", false, SEL_IN2, SEL_OUT));
+		assertRefused("No connection", () -> ConnectionEdits.intercept(file, "PTrack", "nosuch", false, SEL_IN2, SEL_OUT));
 	}
 
 	@Test
@@ -101,12 +101,12 @@ public class InterceptEditsTest {
 		// sel is taken by Track.
 		Endpoint sel = new Endpoint("SelReal_1", "in:sel");
 		assertRefused("already has an incoming connection",
-				() -> DiagramEdits.intercept(file, "PTrack", P_OUT, false, sel, SEL_OUT));
+				() -> ConnectionEdits.intercept(file, "PTrack", P_OUT, false, sel, SEL_OUT));
 		// Freed, sel is a Bool and PPart.out a Real.
-		LoadedFile freed = load(DiagramEdits.deleteConnections(file, "PTrack", List.of("Track.out->SelReal_1.in:sel")));
-		assertRefused("Not allowed", () -> DiagramEdits.intercept(freed, "PTrack", P_OUT, false, sel, SEL_OUT));
+		LoadedFile freed = load(DeleteEdits.deleteConnections(file, "PTrack", List.of("Track.out->SelReal_1.in:sel")));
+		assertRefused("Not allowed", () -> ConnectionEdits.intercept(freed, "PTrack", P_OUT, false, sel, SEL_OUT));
 		assertRefused("cannot come out of",
-				() -> DiagramEdits.intercept(file, "PTrack", P_OUT, false, SEL_IN2, SEL_IN2));
+				() -> ConnectionEdits.intercept(file, "PTrack", P_OUT, false, SEL_IN2, SEL_IN2));
 	}
 
 	@Test
@@ -114,8 +114,8 @@ public class InterceptEditsTest {
 		// PTrack already intercepts Out; with a new block, also intercept e.out -> PPart.in1.
 		// (Once intercepted, a connection is replaced by the two halves, so it
 		// cannot be intercepted twice from the diagram.)
-		LoadedFile withBlock = load(DiagramEdits.addBlock(load(source("PLib.dia")), "PTrack", "RAdd", 300, 150));
-		String after = DiagramEdits.intercept(withBlock, "PTrack", "P::e.out:out->P::PPart.in:in1", false,
+		LoadedFile withBlock = load(NodeEdits.addBlock(load(source("PLib.dia")), "PTrack", "RAdd", 300, 150));
+		String after = ConnectionEdits.intercept(withBlock, "PTrack", "P::e.out:out->P::PPart.in:in1", false,
 				new Endpoint("RAdd_1", "in:in1"), new Endpoint("RAdd_1", "out:out"));
 		assertTrue(after.contains("intercept PPart.in1 with RAdd_1.in1, RAdd_1.out;"));
 		LoadedFile reparsed = load(after);

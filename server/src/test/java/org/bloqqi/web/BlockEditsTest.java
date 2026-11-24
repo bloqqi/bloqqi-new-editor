@@ -87,7 +87,7 @@ public class BlockEditsTest {
 		LoadedFile file = load("PLib.dia", before);
 		Map<String, DiagramNode> old = nodes(file, "P");
 
-		String after = DiagramEdits.addBlock(file, "P", "RAdd", 40, 90);
+		String after = NodeEdits.addBlock(file, "P", "RAdd", 40, 90);
 
 		assertTrue(after.startsWith("diagramtype P(SP: Real, PV: Real, K: Real => Out: Real) {\n"
 				+ "  e: RSub;\n  PPart: RMul;\n  RAdd_1;\n  connect(e.out, PPart.in1);"));
@@ -105,9 +105,9 @@ public class BlockEditsTest {
 	public void newBlocksGetTheFirstFreeNumber() throws Exception {
 		// IPart already has RAdd_1.
 		LoadedFile file = load("PLib.dia", source("PLib.dia"));
-		String once = DiagramEdits.addBlock(file, "IPart", "RAdd", 10, 10);
+		String once = NodeEdits.addBlock(file, "IPart", "RAdd", 10, 10);
 		assertTrue(once.contains("  RAdd_2;\n"));
-		String twice = DiagramEdits.addBlock(load("PLib.dia", once), "IPart", "RAdd", 10, 60);
+		String twice = NodeEdits.addBlock(load("PLib.dia", once), "IPart", "RAdd", 10, 60);
 		assertTrue(twice.contains("  RAdd_2;\n  RAdd_3;\n"));
 	}
 
@@ -115,7 +115,7 @@ public class BlockEditsTest {
 	public void addingToAnAutoLaidOutTypeKeepsTheOtherNodesWhereTheyAre() throws Exception {
 		LoadedFile file = load("TwoCounters.dia", source("TwoCounters.dia"));
 		Map<String, DiagramNode> old = nodes(file, "Acc");
-		String after = DiagramEdits.addBlock(file, "Acc", "Add", 300, 150);
+		String after = NodeEdits.addBlock(file, "Acc", "Add", 300, 150);
 		assertTrue(after.contains("  add: Add;\n  Add_1;\n"));
 		LoadedFile reparsed = load("TwoCounters.dia", after);
 		assertCleanParse(reparsed);
@@ -125,36 +125,36 @@ public class BlockEditsTest {
 	@Test
 	public void blocksGoBeforeConnectionsAndAfterVariables() {
 		String onlyConnections = "diagramtype A(a: Int => b: Int) {\n  connect(a, b);\n}\n";
-		assertTrue(DiagramEdits.addBlock(load("x.dia", onlyConnections), "A", "Add", 0, 0)
+		assertTrue(NodeEdits.addBlock(load("x.dia", onlyConnections), "A", "Add", 0, 0)
 				.startsWith("diagramtype A(a: Int => b: Int) {\n  Add_1;\n  connect(a, b);\n}\n"));
 
 		String onlyVariables = "diagramtype A(a: Int => b: Int) {\n  var v: Int;\n  connect(a, b);\n}\n";
-		assertTrue(DiagramEdits.addBlock(load("x.dia", onlyVariables), "A", "Add", 0, 0)
+		assertTrue(NodeEdits.addBlock(load("x.dia", onlyVariables), "A", "Add", 0, 0)
 				.startsWith("diagramtype A(a: Int => b: Int) {\n  var v: Int;\n  Add_1;\n  connect(a, b);\n}\n"));
 
 		String empty = "diagramtype A() {\n}\n";
-		assertTrue(DiagramEdits.addBlock(load("x.dia", empty), "A", "Add", 0, 0)
+		assertTrue(NodeEdits.addBlock(load("x.dia", empty), "A", "Add", 0, 0)
 				.startsWith("diagramtype A() {\n  Add_1;\n}\n"));
 	}
 
 	@Test
 	public void onlyPaletteTypesCanBeAdded() throws Exception {
 		LoadedFile file = load("PLib.dia", source("PLib.dia"));
-		assertRefused("Cannot add a block of P", () -> DiagramEdits.addBlock(file, "P", "P", 0, 0));
-		assertRefused("Cannot add a block of Real", () -> DiagramEdits.addBlock(file, "P", "Real", 0, 0));
+		assertRefused("Cannot add a block of P", () -> NodeEdits.addBlock(file, "P", "P", 0, 0));
+		assertRefused("Cannot add a block of Real", () -> NodeEdits.addBlock(file, "P", "Real", 0, 0));
 	}
 
 	@Test
 	public void blocksThatWouldMakeATypeCycleAreRefused() throws Exception {
 		// PTrack extends P, so a PTrack block inside P would contain itself.
 		LoadedFile file = load("PLib.dia", source("PLib.dia"));
-		assertRefused("Not allowed", () -> DiagramEdits.addBlock(file, "P", "PTrack", 0, 0));
+		assertRefused("Not allowed", () -> NodeEdits.addBlock(file, "P", "PTrack", 0, 0));
 	}
 
 	@Test
 	public void deletingABlockRemovesItsConnectionsToo() throws Exception {
 		String before = source("TwoCounters.dia");
-		String after = DiagramEdits.delete(load("TwoCounters.dia", before), "Acc", List.of(), List.of("add"));
+		String after = DeleteEdits.delete(load("TwoCounters.dia", before), "Acc", List.of(), List.of("add"));
 
 		assertEquals(before.replace("  add: Add;\n", "")
 				.replace("  connect(in, add.in1);\n", "")
@@ -171,9 +171,9 @@ public class BlockEditsTest {
 	public void deletingABlockRemovesItsAnnotationEntry() throws Exception {
 		String before = source("PLib.dia");
 		LoadedFile file = load("PLib.dia", before);
-		String added = DiagramEdits.addBlock(file, "Rid", "RAdd", 50, 50);
+		String added = NodeEdits.addBlock(file, "Rid", "RAdd", 50, 50);
 		assertTrue(typeText(added, "Rid").contains("RAdd_1 = ("));
-		String deleted = DiagramEdits.delete(load("PLib.dia", added), "Rid", List.of(), List.of("RAdd_1"));
+		String deleted = DeleteEdits.delete(load("PLib.dia", added), "Rid", List.of(), List.of("RAdd_1"));
 		assertFalse(typeText(deleted, "Rid").contains("RAdd_1"));
 		assertCleanParse(load("PLib.dia", deleted));
 	}
@@ -182,7 +182,7 @@ public class BlockEditsTest {
 	public void blocksUsedElsewhereCannotBeDeleted() throws Exception {
 		// PI (extends P) connects e.out.
 		LoadedFile file = load("PLib.dia", source("PLib.dia"));
-		assertRefused("Not allowed", () -> DiagramEdits.delete(file, "P", List.of(), List.of("e")));
+		assertRefused("Not allowed", () -> DeleteEdits.delete(file, "P", List.of(), List.of("e")));
 	}
 
 	@Test
@@ -190,14 +190,14 @@ public class BlockEditsTest {
 		LoadedFile file = load("PLib.dia", source("PLib.dia"));
 		assertFalse(nodes(file, "PTrack").get("P::e").deletable());
 		assertTrue(nodes(file, "PTrack").get("SelReal_1").deletable());
-		assertRefused("not declared in PTrack", () -> DiagramEdits.delete(file, "PTrack", List.of(), List.of("P::e")));
-		assertRefused("No block", () -> DiagramEdits.delete(file, "PTrack", List.of(), List.of("nosuch")));
+		assertRefused("not declared in PTrack", () -> DeleteEdits.delete(file, "PTrack", List.of(), List.of("P::e")));
+		assertRefused("No block", () -> DeleteEdits.delete(file, "PTrack", List.of(), List.of("nosuch")));
 	}
 
 	@Test
 	public void blocksAndConnectionsAreDeletedInOneEdit() throws Exception {
 		String before = source("PLib.dia");
-		String after = DiagramEdits.delete(load("PLib.dia", before), "PTrack",
+		String after = DeleteEdits.delete(load("PLib.dia", before), "PTrack",
 				List.of("TrackValue.out->SelReal_1.in:in1"), List.of("SelReal_1"));
 		LoadedFile reparsed = load("PLib.dia", after);
 		assertCleanParse(reparsed);
@@ -223,7 +223,7 @@ public class BlockEditsTest {
 			for (String type : DiagramBuilder.diagramTypeNames(file.compilationUnit())) {
 				Map<String, DiagramNode> before = nodes(file, type);
 
-				LoadedFile withAdd = load(f, DiagramEdits.addBlock(file, type, "Add", 400, 300));
+				LoadedFile withAdd = load(f, NodeEdits.addBlock(file, type, "Add", 400, 300));
 				assertCleanParse(withAdd);
 				Map<String, DiagramNode> after = nodes(withAdd, type);
 				assertUnmoved(before, after);
@@ -235,7 +235,7 @@ public class BlockEditsTest {
 						continue;
 					}
 					try {
-						LoadedFile without = load(f, DiagramEdits.delete(file, type, List.of(), List.of(n.id())));
+						LoadedFile without = load(f, DeleteEdits.delete(file, type, List.of(), List.of(n.id())));
 						assertCleanParse(without);
 						assertFalse(f + " " + type + " " + n.id(), nodes(without, type).containsKey(n.id()));
 						deleted++;

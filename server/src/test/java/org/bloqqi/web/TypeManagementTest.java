@@ -48,7 +48,7 @@ public class TypeManagementTest {
 	@Test
 	public void renamingADiagramTypeUpdatesItsUses() throws Exception {
 		String before = source("PLib.dia");
-		String after = DiagramEdits.renameType(load("PLib.dia", before), "P", "Ctrl");
+		String after = TypeEdits.renameType(load("PLib.dia", before), "P", "Ctrl");
 
 		assertTrue(after.startsWith("diagramtype Ctrl(SP: Real, PV: Real, K: Real => Out: Real) {"));
 		assertTrue(after.contains("diagramtype PI(Track: Bool, TrackValue: Real, Ti: Real) extends Ctrl {"));
@@ -68,7 +68,7 @@ public class TypeManagementTest {
 	@Test
 	public void renamingAnExternalFunctionUpdatesBlocksOfIt() throws Exception {
 		String before = source("TwoCounters.dia");
-		String after = DiagramEdits.renameType(load("TwoCounters.dia", before), "Print", "Show");
+		String after = TypeEdits.renameType(load("TwoCounters.dia", before), "Print", "Show");
 		assertEquals(before.replace("external Print(", "external Show(")
 				.replace("print1: Print;", "print1: Show;").replace("print2: Print;", "print2: Show;"), after);
 		assertCleanParse(load("TwoCounters.dia", after));
@@ -79,7 +79,7 @@ public class TypeManagementTest {
 		String text = "diagramtype A(x: Int) {\n}\n"
 				+ "diagramtype M(v: Int) {\n  A_1;\n  A_2;\n  connect(v, A_1.x);\n}\n"
 				+ "annotation(\n  A_1 = (10, 10, 60, 20)\n)\n";
-		String after = DiagramEdits.renameType(load("x.dia", text), "A", "B");
+		String after = TypeEdits.renameType(load("x.dia", text), "A", "B");
 		assertEquals("diagramtype B(x: Int) {\n}\n"
 				+ "diagramtype M(v: Int) {\n  B_1;\n  B_2;\n  connect(v, B_1.x);\n}\n"
 				+ "annotation(\n  B_1 = (10, 10, 60, 20)\n)\n", after);
@@ -89,11 +89,11 @@ public class TypeManagementTest {
 	@Test
 	public void typeRenamesAreChecked() throws Exception {
 		LoadedFile file = load("TwoCounters.dia", source("TwoCounters.dia"));
-		assertRefused("already a type called Acc", () -> DiagramEdits.renameType(file, "Main", "Acc"));
-		assertRefused("already a type called Add", () -> DiagramEdits.renameType(file, "Main", "Add"));
-		assertRefused("Not a valid name", () -> DiagramEdits.renameType(file, "Main", "1M"));
-		assertRefused("No diagram type or external function Add", () -> DiagramEdits.renameType(file, "Add", "Plus"));
-		assertEquals(file.source(), DiagramEdits.renameType(file, "Main", "Main"));
+		assertRefused("already a type called Acc", () -> TypeEdits.renameType(file, "Main", "Acc"));
+		assertRefused("already a type called Add", () -> TypeEdits.renameType(file, "Main", "Add"));
+		assertRefused("Not a valid name", () -> TypeEdits.renameType(file, "Main", "1M"));
+		assertRefused("No diagram type or external function Add", () -> TypeEdits.renameType(file, "Add", "Plus"));
+		assertEquals(file.source(), TypeEdits.renameType(file, "Main", "Main"));
 	}
 
 	// ----- Delete -----
@@ -101,25 +101,25 @@ public class TypeManagementTest {
 	@Test
 	public void typesInUseCannotBeDeleted() throws Exception {
 		LoadedFile file = load("TwoCounters.dia", source("TwoCounters.dia"));
-		assertRefused("Cannot delete Acc: it is used in Main", () -> DiagramEdits.deleteType(file, "Acc"));
-		assertRefused("Cannot delete Print: it is used in Main", () -> DiagramEdits.deleteType(file, "Print"));
+		assertRefused("Cannot delete Acc: it is used in Main", () -> TypeEdits.deleteType(file, "Acc"));
+		assertRefused("Cannot delete Print: it is used in Main", () -> TypeEdits.deleteType(file, "Print"));
 		LoadedFile plib = load("PLib.dia", source("PLib.dia"));
-		assertRefused("it is used in PI, PD, PTrack", () -> DiagramEdits.deleteType(plib, "P"));
+		assertRefused("it is used in PI, PD, PTrack", () -> TypeEdits.deleteType(plib, "P"));
 	}
 
 	@Test
 	public void deletingAnUnusedTypeRemovesItsDeclaration() throws Exception {
 		String before = source("TwoCounters.dia");
-		String after = DiagramEdits.deleteType(load("TwoCounters.dia", before), "Main");
+		String after = TypeEdits.deleteType(load("TwoCounters.dia", before), "Main");
 		int start = before.indexOf("diagramtype Main()");
 		int end = before.indexOf("diagramtype Acc(");
 		assertEquals(before.substring(0, start) + before.substring(end), after);
 		assertCleanParse(load("TwoCounters.dia", after));
 
 		// With annotations: they go too.
-		String withLayout = DiagramEdits.moveNodes(load("TwoCounters.dia", after), "Acc",
-				List.of(new DiagramEdits.Move("add", 100, 100)));
-		String noAcc = DiagramEdits.deleteType(load("TwoCounters.dia", withLayout), "Acc");
+		String withLayout = LayoutEdits.moveNodes(load("TwoCounters.dia", after), "Acc",
+				List.of(new LayoutEdits.Move("add", 100, 100)));
+		String noAcc = TypeEdits.deleteType(load("TwoCounters.dia", withLayout), "Acc");
 		// (The file's final blank line stays.)
 		assertEquals("external Print(in: Int);\n\n\n", noAcc);
 	}
@@ -130,7 +130,7 @@ public class TypeManagementTest {
 	public void aSubtypeInheritsEverything() throws Exception {
 		String before = source("PLib.dia");
 		LoadedFile file = load("PLib.dia", before);
-		String after = DiagramEdits.addSubtype(file, "P", "PX");
+		String after = TypeEdits.addSubtype(file, "P", "PX");
 		assertEquals(before + "diagramtype PX extends P {\n}\n", after);
 		LoadedFile reparsed = load("PLib.dia", after);
 		assertCleanParse(reparsed);
@@ -139,29 +139,29 @@ public class TypeManagementTest {
 		assertEquals(DiagramBuilder.build(file, "P").edges().size(), px.edges().size());
 
 		LoadedFile counters = load("TwoCounters.dia", source("TwoCounters.dia"));
-		assertRefused("Print is not a diagram type", () -> DiagramEdits.addSubtype(counters, "Print", "X"));
-		assertRefused("already a type called PI", () -> DiagramEdits.addSubtype(file, "P", "PI"));
+		assertRefused("Print is not a diagram type", () -> TypeEdits.addSubtype(counters, "Print", "X"));
+		assertRefused("already a type called PI", () -> TypeEdits.addSubtype(file, "P", "PI"));
 	}
 
 	@Test
 	public void superTypesCanBeChanged() {
 		String text = "diagramtype A(x: Int) {\n}\ndiagramtype B(=> y: Int) {\n}\n";
-		String extended = DiagramEdits.setSuperTypes(load("x.dia", text), "B", List.of("A"));
+		String extended = TypeEdits.setSuperTypes(load("x.dia", text), "B", List.of("A"));
 		assertEquals("diagramtype A(x: Int) {\n}\ndiagramtype B(=> y: Int) extends A {\n}\n", extended);
 		assertCleanParse(load("x.dia", extended));
-		assertEquals(text, DiagramEdits.setSuperTypes(load("x.dia", extended), "B", List.of()));
+		assertEquals(text, TypeEdits.setSuperTypes(load("x.dia", extended), "B", List.of()));
 
 		String noParens = "diagramtype A {\n}\ndiagramtype B {\n}\n";
 		assertEquals("diagramtype A {\n}\ndiagramtype B extends A {\n}\n",
-				DiagramEdits.setSuperTypes(load("x.dia", noParens), "B", List.of("A")));
+				TypeEdits.setSuperTypes(load("x.dia", noParens), "B", List.of("A")));
 	}
 
 	@Test
 	public void theOrderOfSuperTypesMatters() {
 		String text = "diagramtype A(x: Int) {\n}\ndiagramtype B(y: Int) {\n}\ndiagramtype C {\n}\n";
-		String ab = DiagramEdits.setSuperTypes(load("x.dia", text), "C", List.of("A", "B"));
+		String ab = TypeEdits.setSuperTypes(load("x.dia", text), "C", List.of("A", "B"));
 		assertTrue(ab.contains("diagramtype C extends A, B {"));
-		String ba = DiagramEdits.setSuperTypes(load("x.dia", ab), "C", List.of("B", "A"));
+		String ba = TypeEdits.setSuperTypes(load("x.dia", ab), "C", List.of("B", "A"));
 		assertTrue(ba.contains("diagramtype C extends B, A {"));
 		// Inherited in that order: e.g. C's parameters (its ports as a block).
 		assertEquals(List.of("A::x", "B::y"), inParameters(load("x.dia", ab), "C"));
@@ -178,11 +178,11 @@ public class TypeManagementTest {
 	public void superTypeChangesThatBreakThingsAreRefused() throws Exception {
 		LoadedFile file = load("PLib.dia", source("PLib.dia"));
 		// PTrack intercepts P's out-parameter Out.
-		assertRefused("Not allowed", () -> DiagramEdits.setSuperTypes(file, "PTrack", List.of()));
+		assertRefused("Not allowed", () -> TypeEdits.setSuperTypes(file, "PTrack", List.of()));
 		// P extends PTrack, which extends P.
-		assertRefused("Not allowed", () -> DiagramEdits.setSuperTypes(file, "P", List.of("PTrack")));
-		assertRefused("cannot extend itself", () -> DiagramEdits.setSuperTypes(file, "P", List.of("P")));
-		assertRefused("RAdd is not a diagram type", () -> DiagramEdits.setSuperTypes(file, "P", List.of("RAdd")));
+		assertRefused("Not allowed", () -> TypeEdits.setSuperTypes(file, "P", List.of("PTrack")));
+		assertRefused("cannot extend itself", () -> TypeEdits.setSuperTypes(file, "P", List.of("P")));
+		assertRefused("RAdd is not a diagram type", () -> TypeEdits.setSuperTypes(file, "P", List.of("RAdd")));
 	}
 
 	/** Every diagram type and external function in every example can be renamed (or is refused with a reason). */
@@ -200,7 +200,7 @@ public class TypeManagementTest {
 				}
 				String newName = td.name() + "Renamed";
 				try {
-					LoadedFile after = load(f, DiagramEdits.renameType(file, td.name(), newName));
+					LoadedFile after = load(f, TypeEdits.renameType(file, td.name(), newName));
 					assertCleanParse(after);
 					// (The old name may remain as the name of something else, e.g.
 					// IPart's out-parameter IPart.)

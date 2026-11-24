@@ -159,42 +159,42 @@ public final class DiagramSocket implements Session.Listener.AutoDemanding {
 			case Protocol.SetFeaturesRequest r -> save(file, r.diagramType(),
 					FeatureEdits.setFeatures(file, r.diagramType(), r.block(), r.features()));
 			case Protocol.MoveRequest move ->
-				save(file, move.diagramType(), DiagramEdits.moveNodes(file, move.diagramType(), move.moves()));
+				save(file, move.diagramType(), LayoutEdits.moveNodes(file, move.diagramType(), move.moves()));
 			case Protocol.ConnectRequest connect -> save(file, connect.diagramType(),
-					DiagramEdits.connect(file, connect.diagramType(), connect.source(), connect.target()));
+					ConnectionEdits.connect(file, connect.diagramType(), connect.source(), connect.target()));
 			case Protocol.DeleteRequest delete -> save(file, delete.diagramType(),
-					DiagramEdits.delete(file, delete.diagramType(), delete.edges(), delete.nodes()));
+					DeleteEdits.delete(file, delete.diagramType(), delete.edges(), delete.nodes()));
 			case Protocol.AddBlockRequest add -> save(file, add.diagramType(),
-					DiagramEdits.addBlock(file, add.diagramType(), add.typeName(), add.x(), add.y()));
+					NodeEdits.addBlock(file, add.diagramType(), add.typeName(), add.x(), add.y()));
 			case Protocol.AddLiteralRequest add -> save(file, add.diagramType(),
-					DiagramEdits.addLiteral(file, add.diagramType(), add.target(), add.value()));
-			case Protocol.AddVariableRequest add -> save(file, add.diagramType(), DiagramEdits.addVariable(file,
+					NodeEdits.addLiteral(file, add.diagramType(), add.target(), add.value()));
+			case Protocol.AddVariableRequest add -> save(file, add.diagramType(), NodeEdits.addVariable(file,
 					add.diagramType(), add.kind(), add.name(), add.typeName(), add.x(), add.y()));
-			case Protocol.AddParameterRequest add -> save(file, add.diagramType(), DiagramEdits.addParameter(file,
+			case Protocol.AddParameterRequest add -> save(file, add.diagramType(), NodeEdits.addParameter(file,
 					add.diagramType(), add.in(), add.name(), add.typeName(), add.x(), add.y()));
 			case Protocol.RenameRequest r -> save(file, r.diagramType(),
-					DiagramEdits.rename(file, r.diagramType(), r.node(), r.name()));
+					RenameEdits.rename(file, r.diagramType(), r.node(), r.name()));
 			case Protocol.SetLiteralRequest r -> save(file, r.diagramType(),
-					DiagramEdits.setLiteral(file, r.diagramType(), r.literal(), r.value()));
+					NodeEdits.setLiteral(file, r.diagramType(), r.literal(), r.value()));
 			case Protocol.AutoLayoutRequest r -> save(file, r.diagramType(),
-					DiagramEdits.autoLayout(file, r.diagramType()));
+					LayoutEdits.autoLayout(file, r.diagramType()));
 			case Protocol.AddDiagramTypeRequest r -> save(file, r.name(),
-					DiagramEdits.addDiagramType(file, r.name()));
+					TypeEdits.addDiagramType(file, r.name()));
 			case Protocol.AddExternalFunctionRequest r -> save(file, r.diagramType(),
-					DiagramEdits.addExternalFunction(file, r.name(), r.inputs(), r.output()));
+					TypeEdits.addExternalFunction(file, r.name(), r.inputs(), r.output()));
 			case Protocol.RenameTypeRequest r -> save(file,
 					r.typeName().equals(r.diagramType()) ? r.name() : r.diagramType(),
-					DiagramEdits.renameType(file, r.typeName(), r.name()));
+					TypeEdits.renameType(file, r.typeName(), r.name()));
 			case Protocol.DeleteTypeRequest r -> save(file,
 					r.typeName().equals(r.diagramType()) ? null : r.diagramType(),
-					DiagramEdits.deleteType(file, r.typeName()));
+					TypeEdits.deleteType(file, r.typeName()));
 			case Protocol.AddSubtypeRequest r -> save(file, r.name(),
-					DiagramEdits.addSubtype(file, r.superType(), r.name()));
+					TypeEdits.addSubtype(file, r.superType(), r.name()));
 			case Protocol.SetParametersRequest r -> save(file, r.diagramType(),
-					DiagramEdits.setParameters(file, r.diagramType(), r.inParameters(), r.outParameters()));
+					NodeEdits.setParameters(file, r.diagramType(), r.inParameters(), r.outParameters()));
 			case Protocol.SetSuperTypesRequest r -> save(file, r.typeName(),
-					DiagramEdits.setSuperTypes(file, r.typeName(), r.superTypes()));
-			case Protocol.InterceptRequest r -> save(file, r.diagramType(), DiagramEdits.intercept(file,
+					TypeEdits.setSuperTypes(file, r.typeName(), r.superTypes()));
+			case Protocol.InterceptRequest r -> save(file, r.diagramType(), ConnectionEdits.intercept(file,
 					r.diagramType(), r.edge(), r.atSource(), r.into(), r.outOf()));
 			case Protocol.CreateFileRequest r -> throw new IllegalStateException("handled above");
 			case Protocol.RenameFileRequest r -> throw new IllegalStateException("handled above");

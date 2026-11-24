@@ -57,7 +57,7 @@ public class ConnectionEditsTest {
 	@Test
 	public void deletingAConnectionRemovesItsLine() throws Exception {
 		String before = source("TwoCounters.dia");
-		String after = DiagramEdits.deleteConnections(load("TwoCounters.dia", before), "Acc",
+		String after = DeleteEdits.deleteConnections(load("TwoCounters.dia", before), "Acc",
 				List.of("in.out->add.in:in1"));
 
 		assertEquals(before.replace("  connect(in, add.in1);\n", ""), after);
@@ -69,10 +69,10 @@ public class ConnectionEditsTest {
 	@Test
 	public void connectingAppendsAStatementToTheBody() throws Exception {
 		String original = source("TwoCounters.dia");
-		LoadedFile unconnected = load("TwoCounters.dia", DiagramEdits.deleteConnections(
+		LoadedFile unconnected = load("TwoCounters.dia", DeleteEdits.deleteConnections(
 				load("TwoCounters.dia", original), "Acc", List.of("in.out->add.in:in1")));
 
-		String after = DiagramEdits.connect(unconnected, "Acc", at("in", "out"), at("add", "in:in1"));
+		String after = ConnectionEdits.connect(unconnected, "Acc", at("in", "out"), at("add", "in:in1"));
 
 		assertEquals(unconnected.source().replace("  connect(add.out, state);\n}",
 				"  connect(add.out, state);\n  connect(in, add.in1);\n}"), after);
@@ -89,7 +89,7 @@ public class ConnectionEditsTest {
 		assertFalse("in1 is already connected", add.inPorts().get(0).connectable());
 		assertTrue("an out-port can always start another connection", add.outPorts().get(0).connectable());
 
-		LoadedFile unconnected = load("TwoCounters.dia", DiagramEdits.deleteConnections(file, "Acc",
+		LoadedFile unconnected = load("TwoCounters.dia", DeleteEdits.deleteConnections(file, "Acc",
 				List.of("in.out->add.in:in1")));
 		List<DiagramNode> nodes = DiagramBuilder.build(unconnected, "Acc").nodes();
 		DiagramPort in1 = nodes.stream().filter(n -> n.id().equals("add")).findFirst().orElseThrow().inPorts().get(0);
@@ -103,20 +103,20 @@ public class ConnectionEditsTest {
 	public void portsOfInheritedBlocksAreWrittenWithoutQualification() throws Exception {
 		// In PTrack (extends P), free SelReal_1.sel and drive it from the inherited block e.
 		LoadedFile file = load("PLib.dia", source("PLib.dia"));
-		LoadedFile freed = load("PLib.dia", DiagramEdits.deleteConnections(file, "PTrack",
+		LoadedFile freed = load("PLib.dia", DeleteEdits.deleteConnections(file, "PTrack",
 				List.of("Track.out->SelReal_1.in:sel")));
 
 		// e.out is a Real and sel a Bool.
 		assertRefused("incompatible types",
-				() -> DiagramEdits.connect(freed, "PTrack", at("P::e", "out:out"), at("SelReal_1", "in:sel")));
+				() -> ConnectionEdits.connect(freed, "PTrack", at("P::e", "out:out"), at("SelReal_1", "in:sel")));
 
-		String after = DiagramEdits.connect(freed, "PTrack", at("Track", "out"), at("SelReal_1", "in:sel"));
+		String after = ConnectionEdits.connect(freed, "PTrack", at("Track", "out"), at("SelReal_1", "in:sel"));
 		assertTrue(after.contains("  connect(TrackValue, SelReal_1.in1);\n  connect(Track, SelReal_1.sel);\n}"));
 
 		// An inherited block's port: "e.out", not "P::e.out".
-		LoadedFile again = load("PLib.dia", DiagramEdits.deleteConnections(load("PLib.dia", after), "PTrack",
+		LoadedFile again = load("PLib.dia", DeleteEdits.deleteConnections(load("PLib.dia", after), "PTrack",
 				List.of("TrackValue.out->SelReal_1.in:in1")));
-		String withE = DiagramEdits.connect(again, "PTrack", at("P::e", "out:out"), at("SelReal_1", "in:in1"));
+		String withE = ConnectionEdits.connect(again, "PTrack", at("P::e", "out:out"), at("SelReal_1", "in:in1"));
 		assertTrue(withE.contains("  connect(e.out, SelReal_1.in1);\n}"));
 		LoadedFile reparsed = load("PLib.dia", withE);
 		assertCleanParse(reparsed);
@@ -127,34 +127,34 @@ public class ConnectionEditsTest {
 	public void aTargetCanOnlyHaveOneIncomingConnection() throws Exception {
 		LoadedFile file = load("TwoCounters.dia", source("TwoCounters.dia"));
 		assertRefused("already has an incoming connection",
-				() -> DiagramEdits.connect(file, "Acc", at("in", "out"), at("add", "in:in2")));
+				() -> ConnectionEdits.connect(file, "Acc", at("in", "out"), at("add", "in:in2")));
 	}
 
 	@Test
 	public void connectionsMustRunFromASourceToATarget() throws Exception {
-		LoadedFile file = load("TwoCounters.dia", DiagramEdits.deleteConnections(
+		LoadedFile file = load("TwoCounters.dia", DeleteEdits.deleteConnections(
 				load("TwoCounters.dia", source("TwoCounters.dia")), "Acc", List.of("in.out->add.in:in1")));
-		assertRefused("cannot start at", () -> DiagramEdits.connect(file, "Acc", at("add", "in:in1"), at("out", "in")));
-		assertRefused("cannot end at", () -> DiagramEdits.connect(file, "Acc", at("add", "out:out"), at("in", "in")));
-		assertRefused("No such handle", () -> DiagramEdits.connect(file, "Acc", at("add", "out:nosuch"), at("add", "in:in1")));
+		assertRefused("cannot start at", () -> ConnectionEdits.connect(file, "Acc", at("add", "in:in1"), at("out", "in")));
+		assertRefused("cannot end at", () -> ConnectionEdits.connect(file, "Acc", at("add", "out:out"), at("in", "in")));
+		assertRefused("No such handle", () -> ConnectionEdits.connect(file, "Acc", at("add", "out:nosuch"), at("add", "in:in1")));
 	}
 
 	@Test
 	public void dataflowCyclesAreRefused() throws Exception {
 		// P: e -> PPart; feeding PPart's output back into e makes a cycle without a variable.
 		String before = source("PLib.dia");
-		LoadedFile freed = load("PLib.dia", DiagramEdits.deleteConnections(load("PLib.dia", before), "P",
+		LoadedFile freed = load("PLib.dia", DeleteEdits.deleteConnections(load("PLib.dia", before), "P",
 				List.of("SP.out->e.in:in1")));
-		assertRefused("cycle", () -> DiagramEdits.connect(freed, "P", at("PPart", "out:out"), at("e", "in:in1")));
+		assertRefused("cycle", () -> ConnectionEdits.connect(freed, "P", at("PPart", "out:out"), at("e", "in:in1")));
 	}
 
 	@Test
 	public void inheritedConnectionsCannotBeDeleted() throws Exception {
 		LoadedFile file = load("PLib.dia", source("PLib.dia"));
 		assertRefused("not declared in PTrack",
-				() -> DiagramEdits.deleteConnections(file, "PTrack", List.of("P::e.out:out->P::PPart.in:in1")));
+				() -> DeleteEdits.deleteConnections(file, "PTrack", List.of("P::e.out:out->P::PPart.in:in1")));
 		assertRefused("No connection",
-				() -> DiagramEdits.deleteConnections(file, "PTrack", List.of("nosuch")));
+				() -> DeleteEdits.deleteConnections(file, "PTrack", List.of("nosuch")));
 	}
 
 	@Test
@@ -167,13 +167,13 @@ public class ConnectionEditsTest {
 		assertFalse("drawn like a local connection", e.inherited());
 		assertFalse(e.deletable());
 		assertRefused("comes from a wiring",
-				() -> DiagramEdits.deleteConnections(file, "MyLoop", List.of(e.id())));
+				() -> DeleteEdits.deleteConnections(file, "MyLoop", List.of(e.id())));
 	}
 
 	@Test
 	public void deletingEitherHalfOfAnInterceptionRemovesTheInterception() throws Exception {
 		String before = source("PLib.dia");
-		String after = DiagramEdits.deleteConnections(load("PLib.dia", before), "PTrack",
+		String after = DeleteEdits.deleteConnections(load("PLib.dia", before), "PTrack",
 				List.of("P::PPart.out:out->SelReal_1.in:in2"));
 
 		assertEquals(before.replace("  intercept Out with SelReal_1.in2, SelReal_1.out;\n", ""), after);
@@ -193,7 +193,7 @@ public class ConnectionEditsTest {
 		DiagramEdge edge = DiagramBuilder.build(file, type).edges().stream()
 				.filter(DiagramEdge::deletable).reduce((a, b) -> b).orElseThrow();
 
-		String deleted = DiagramEdits.deleteConnections(file, type, List.of(edge.id()));
+		String deleted = DeleteEdits.deleteConnections(file, type, List.of(edge.id()));
 		for (String line : before.split("\n")) {
 			if (line.contains("//")) {
 				assertTrue("kept: " + line, deleted.contains(line));
@@ -202,7 +202,7 @@ public class ConnectionEditsTest {
 		assertEquals("one line less", before.split("\n").length - 1, deleted.split("\n").length);
 
 		LoadedFile freed = load("Tank.dia", deleted);
-		String reconnected = DiagramEdits.connect(freed, type,
+		String reconnected = ConnectionEdits.connect(freed, type,
 				new Endpoint(edge.source(), edge.sourceHandle()), new Endpoint(edge.target(), edge.targetHandle()));
 		assertTrue("tab-indented: " + reconnected, reconnected.contains(";\n\tconnect("));
 		assertCleanParse(load("Tank.dia", reconnected));
@@ -213,21 +213,21 @@ public class ConnectionEditsTest {
 	public void connectingInAnEmptyBody() {
 		String twoLines = "diagramtype A(a: Int => b: Int) {\n}\n";
 		assertEquals("diagramtype A(a: Int => b: Int) {\n  connect(a, b);\n}\n",
-				DiagramEdits.connect(load("x.dia", twoLines), "A", at("a", "out"), at("b", "in")));
+				ConnectionEdits.connect(load("x.dia", twoLines), "A", at("a", "out"), at("b", "in")));
 
 		String oneLine = "diagramtype A(a: Int => b: Int) {}\n";
 		assertEquals("diagramtype A(a: Int => b: Int) {\n  connect(a, b);\n}\n",
-				DiagramEdits.connect(load("x.dia", oneLine), "A", at("a", "out"), at("b", "in")));
+				ConnectionEdits.connect(load("x.dia", oneLine), "A", at("a", "out"), at("b", "in")));
 
 		String oneLineBody = "diagramtype A(a: Int => b: Int) { var v: Int; }\n";
 		assertEquals("diagramtype A(a: Int => b: Int) { var v: Int; connect(a, b); }\n",
-				DiagramEdits.connect(load("x.dia", oneLineBody), "A", at("a", "out"), at("b", "in")));
+				ConnectionEdits.connect(load("x.dia", oneLineBody), "A", at("a", "out"), at("b", "in")));
 	}
 
 	@Test
 	public void bracesInCommentsDoNotConfuseTheInsertion() {
 		String text = "diagramtype A(a: Int => b: Int) {\n  // a } in a comment\n  var v: Int;\n}\n";
-		String after = DiagramEdits.connect(load("x.dia", text), "A", at("a", "out"), at("b", "in"));
+		String after = ConnectionEdits.connect(load("x.dia", text), "A", at("a", "out"), at("b", "in"));
 		assertEquals("diagramtype A(a: Int => b: Int) {\n  // a } in a comment\n  var v: Int;\n  connect(a, b);\n}\n",
 				after);
 	}
@@ -266,10 +266,10 @@ public class ConnectionEditsTest {
 				for (DiagramEdge e : d.edges()) {
 					String where = f + " " + type + " " + e.id();
 					if (!e.deletable()) {
-						assertRefused("not declared in", () -> DiagramEdits.deleteConnections(file, type, List.of(e.id())));
+						assertRefused("not declared in", () -> DeleteEdits.deleteConnections(file, type, List.of(e.id())));
 						continue;
 					}
-					LoadedFile after = load(f, DiagramEdits.deleteConnections(file, type, List.of(e.id())));
+					LoadedFile after = load(f, DeleteEdits.deleteConnections(file, type, List.of(e.id())));
 					assertCleanParse(after);
 					assertFalse(where, edgeIds(after, type).contains(e.id()));
 					if (e.fromLiteral() || e.intercept() != null
@@ -279,7 +279,7 @@ public class ConnectionEditsTest {
 						// have different types.
 						continue;
 					}
-					LoadedFile again = load(f, DiagramEdits.connect(after, type,
+					LoadedFile again = load(f, ConnectionEdits.connect(after, type,
 							at(e.source(), e.sourceHandle()), at(e.target(), e.targetHandle())));
 					assertCleanParse(again);
 					assertTrue(where, edgeIds(again, type).contains(e.id()));
@@ -303,7 +303,7 @@ public class ConnectionEditsTest {
 				for (Endpoint s : sources) {
 					for (Endpoint t : targets) {
 						try {
-							assertCleanParse(load(f, DiagramEdits.connect(file, type, s, t)));
+							assertCleanParse(load(f, ConnectionEdits.connect(file, type, s, t)));
 						} catch (IllegalArgumentException refused) {
 							// e.g. incompatible types or a cycle
 						}

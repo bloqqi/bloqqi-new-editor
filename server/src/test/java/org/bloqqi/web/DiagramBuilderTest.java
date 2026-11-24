@@ -261,7 +261,7 @@ public class DiagramBuilderTest {
 
 		// Edits do not reach it.
 		try {
-			DiagramEdits.autoLayout(plib, "Main$pid");
+			LayoutEdits.autoLayout(plib, "Main$pid");
 			fail("an edit of an anonymous type");
 		} catch (IllegalArgumentException expected) {
 			assertTrue(expected.getMessage(), expected.getMessage().contains("No diagram type Main$pid"));
