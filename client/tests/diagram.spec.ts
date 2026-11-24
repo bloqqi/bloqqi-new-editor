@@ -1340,6 +1340,12 @@ test.describe.serial('text view', () => {
     expect(c).toContain('void bloqqi_main(Main_VARS *vars)');
     expect(c).toContain('Acc_RES acc1 = Acc(1, &_state->acc1);');
     expect(c).not.toContain('int main()');
+    // It is read-only: typing changes nothing, and says why.
+    await expect(page.getByTestId('c-readonly')).toHaveText('Read-only');
+    await code.click();
+    await page.keyboard.type('xyz');
+    await expect(page.getByTestId('c-edit-hint')).toContainText('cannot be edited here');
+    expect(await copied()).toBe(c);
     // With the driver (--c).
     await page.getByLabel('With driver').check();
     await expect(page.getByText('bloqqi-compiler --c', { exact: true })).toBeVisible();

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { defaultHighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import { EditorState } from '@codemirror/state';
@@ -27,6 +27,15 @@ export function CView({
   const [variant, setVariant] = useState<CVariant>('minimal');
   const [result, setResult] = useState<CCodeMessage | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  /** Shown for a moment when someone tries to type in the code. */
+  const [editHint, setEditHint] = useState(false);
+  const hintTimer = useRef<number | undefined>(undefined);
+  const showEditHint = useCallback(() => {
+    setEditHint(true);
+    window.clearTimeout(hintTimer.current);
+    hintTimer.current = window.setTimeout(() => setEditHint(false), 4000);
+  }, []);
+  useEffect(() => () => window.clearTimeout(hintTimer.current), []);
 
   useEffect(() => {
     let current = true;
@@ -57,6 +66,13 @@ export function CView({
     <div className="text-view c-view" data-testid="c-view">
       <div className="text-view__bar">
         <span className="text-view__file">{file}</span>
+        <span
+          className="c-view__readonly"
+          data-testid="c-readonly"
+          title="Generated from the file by the Bloqqi compiler: change the diagram or its text instead"
+        >
+          Read-only
+        </span>
         <span className="text-view__state">
           C for <code>Main</code>, as <code>bloqqi-compiler --c{variant === 'minimal' ? '=minimal' : ''}</code>
         </span>
@@ -73,6 +89,11 @@ export function CView({
           {copied ?? 'Copy'}
         </button>
       </div>
+      {editHint && (
+        <div className="banner banner--info" role="status" data-testid="c-edit-hint">
+          The C code is generated from the file and cannot be edited here: change the diagram or its text.
+        </div>
+      )}
       {result === null ? (
         <p className="empty">Generating…</p>
       ) : code === null ? (
@@ -88,14 +109,19 @@ export function CView({
           </ul>
         </section>
       ) : (
-        <CodeEditor code={code} />
+        <CodeEditor code={code} onEditAttempt={showEditHint} />
       )}
     </div>
   );
 }
 
-/** Read-only, highlighted code (text can be selected and searched). */
-function CodeEditor({ code }: { code: string }) {
+/**
+ * Read-only, highlighted code: it can be selected, searched and copied; an
+ * attempt to type, paste or drop text is reported (`onEditAttempt`).
+ */
+function CodeEditor({ code, onEditAttempt }: { code: string; onEditAttempt: () => void }) {
+  const editAttempt = useRef(onEditAttempt);
+  editAttempt.current = onEditAttempt;
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   useEffect(() => {
@@ -110,8 +136,17 @@ function CodeEditor({ code }: { code: string }) {
           highlightSelectionMatches(),
           keymap.of(searchKeymap),
           EditorState.readOnly.of(true),
+          EditorView.domEventHandlers({
+            beforeinput: () => editAttempt.current(),
+            paste: () => editAttempt.current(),
+            drop: () => editAttempt.current(),
+          }),
           EditorState.tabSize.of(2),
-          EditorView.contentAttributes.of({ 'aria-label': 'Generated C code', 'data-testid': 'c-code' }),
+          EditorView.contentAttributes.of({
+            'aria-label': 'Generated C code (read-only)',
+            'aria-readonly': 'true',
+            'data-testid': 'c-code',
+          }),
         ],
       }),
     });
@@ -129,5 +164,5 @@ function CodeEditor({ code }: { code: string }) {
       v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: code } });
     }
   }, [code]);
-  return <div className="text-view__editor" ref={host} />;
+  return <div className="text-view__editor c-view__code" ref={host} />;
 }

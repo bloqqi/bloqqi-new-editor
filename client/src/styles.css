@@ -226,6 +226,23 @@ body,
   color: var(--muted);
 }
 
+.c-view__readonly {
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: #f4f4f6;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Generated code: a light grey page, unlike the editable text view. */
+.c-view__code .cm-editor,
+.c-view__code .cm-gutters {
+  background: #f7f7f9;
+}
+
 .c-view__problems {
   padding: 8px 16px;
   font-size: 13px;
