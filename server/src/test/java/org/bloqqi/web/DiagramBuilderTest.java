@@ -237,4 +237,68 @@ public class DiagramBuilderTest {
 		LoadedFile file = BloqqiLoader.load("x.dia", "diagramtype A { connect(a, b) }");
 		assertFalse("recovery must be reported", file.syntaxErrors().isEmpty());
 	}
+
+	/** A block's anonymous type ({@code pid: P { feature ...; }}) can be shown, read-only. */
+	@Test
+	public void anonymousTypesCanBeShownReadOnly() throws Exception {
+		LoadedFile plib = Examples.load("PLib.dia");
+		assertEquals("Main$pid", byId(DiagramBuilder.build(plib, "Main")).get("pid").openType());
+		Map<String, DiagramNode> twoCounters = byId(DiagramBuilder.build(Examples.load("TwoCounters.dia"), "Main"));
+		assertEquals("a diagram type in the file", "Acc", twoCounters.get("acc1").openType());
+		assertNull("an external function", twoCounters.get("print1").openType());
+
+		Diagram d = DiagramBuilder.build(plib, "Main$pid");
+		assertEquals("Main$pid", d.diagramType());
+		assertEquals("This is the type of block pid in Main, which is an anonymous type. It is shown read-only "
+				+ "(change the block's features with \"Features…\" in Main, or edit the text)", d.readOnly());
+		assertEquals(List.of("P"), d.superTypes());
+		// P's elements and those of its features PD and PI.
+		Map<String, DiagramNode> nodes = byId(d);
+		for (String id : List.of("P::SP", "P::PPart", "PD::Td", "PD::DPart", "PI::Ti", "PI::IPart", "P::Out")) {
+			assertTrue(id + " in " + nodes.keySet(), nodes.containsKey(id));
+		}
+		assertTrue(d.edges().size() > 10);
+
+		// Edits do not reach it.
+		try {
+			DiagramEdits.autoLayout(plib, "Main$pid");
+			fail("an edit of an anonymous type");
+		} catch (IllegalArgumentException expected) {
+			assertTrue(expected.getMessage(), expected.getMessage().contains("No diagram type Main$pid"));
+		}
+		// A nested one (InlineExample: a block inside inlined blocks), and an unknown name.
+		assertEquals("Tank$loop$master$controller",
+				DiagramBuilder.build(Examples.load("InlineExample.dia"), "Tank$loop$master$controller").diagramType());
+		try {
+			DiagramBuilder.build(plib, "Main$nosuch");
+			fail("unknown anonymous type");
+		} catch (IllegalArgumentException expected) {
+			assertTrue(expected.getMessage().contains("No diagram type Main$nosuch"));
+		}
+	}
+
+	/** Every anonymous type a block in an example has can be shown. */
+	@Test
+	public void everyAnonymousTypeInTheExamplesCanBeShown() throws Exception {
+		int shown = 0;
+		List<String> files;
+		try (var paths = java.nio.file.Files.list(Examples.dir())) {
+			files = paths.map(p -> p.getFileName().toString()).filter(n -> n.endsWith(".dia"))
+					.filter(n -> !Examples.EXCLUDED.contains(n)).sorted().toList();
+		}
+		for (String file : files) {
+			LoadedFile f = Examples.load(file);
+			for (String type : DiagramBuilder.diagramTypeNames(f.compilationUnit())) {
+				for (DiagramNode n : DiagramBuilder.build(f, type).nodes()) {
+					if (n.openType() != null && n.openType().contains("$")) {
+						Diagram d = DiagramBuilder.build(f, n.openType());
+						assertEquals(n.openType(), d.diagramType());
+						assertTrue(n.openType(), d.readOnly() != null);
+						shown++;
+					}
+				}
+			}
+		}
+		assertTrue("some were shown: " + shown, shown >= 2);
+	}
 }

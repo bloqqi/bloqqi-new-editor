@@ -71,7 +71,7 @@ import com.google.gson.JsonParser;
  * server -> client  {"type":"diagram", "file", "diagramType", "diagramTypes":[...],
  *                    "nodes":[{id,kind,label,typeName,inherited,inlined,error,x,y,width,height,
  *                              inPorts:[{name,typeName,y,connectable}], outPorts:[...],
- *                              inConnectable,outConnectable,deletable,featureBase}],
+ *                              inConnectable,outConnectable,deletable,featureBase,openType}],
  *                    "edges":[{id,source,sourceHandle,target,targetHandle,
  *                              inherited,deletable,interceptable,error,fromLiteral,intercept,largeMarker}],
  *                    "problems":[{line,column,message}],
@@ -490,6 +490,7 @@ final class Protocol {
 			jn.addProperty("outConnectable", n.outConnectable());
 			jn.addProperty("deletable", n.deletable());
 			jn.addProperty("featureBase", n.featureBase());
+			jn.addProperty("openType", n.openType());
 			nodes.add(jn);
 		}
 		o.add("nodes", nodes);

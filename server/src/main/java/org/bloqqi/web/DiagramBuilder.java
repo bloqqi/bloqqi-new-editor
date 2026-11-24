@@ -8,6 +8,7 @@ import java.util.Map;
 
 import org.bloqqi.compiler.ast.ASTNode;
 import org.bloqqi.compiler.ast.Anchor;
+import org.bloqqi.compiler.ast.AnonymousDiagramType;
 import org.bloqqi.compiler.ast.Block;
 import org.bloqqi.compiler.ast.CompilationUnit;
 import org.bloqqi.compiler.ast.ConnectionInterception;
@@ -77,7 +78,7 @@ public final class DiagramBuilder {
 
 		CompilationUnit cu = file.compilationUnit();
 		List<String> names = diagramTypeNames(cu);
-		DiagramType dt = find(cu, diagramTypeName != null ? diagramTypeName : names.isEmpty() ? null : names.get(0));
+		DiagramType dt = findShown(cu, diagramTypeName != null ? diagramTypeName : names.isEmpty() ? null : names.get(0));
 		if (dt == null) {
 			if (diagramTypeName != null) {
 				throw new IllegalArgumentException(
@@ -86,7 +87,11 @@ public final class DiagramBuilder {
 			return new Diagram(file.fileName(), null, names, List.of(), List.of(), problems,
 					DiagramEdits.readOnlyReason(file), List.of(), List.of());
 		}
-		Diagram d = new Builder(dt).build(file.fileName(), names, problems, DiagramEdits.readOnlyReason(file));
+		String readOnly = DiagramEdits.readOnlyReason(file);
+		if (readOnly == null && dt instanceof AnonymousDiagramType a) {
+			readOnly = anonymousReadOnly(a);
+		}
+		Diagram d = new Builder(dt).build(file.fileName(), names, problems, readOnly);
 		return new Diagram(d.file(), d.diagramType(), d.diagramTypes(), d.nodes(), d.edges(), d.problems(),
 				d.readOnly(), palette(file, dt), superTypes(dt));
 	}
@@ -158,7 +163,12 @@ public final class DiagramBuilder {
 
 		Diagram build(String fileName, List<String> names, List<Problem> problems, String readOnly) {
 			List<Layout.Link> links = links();
-			Map<String, Layout.Rect> rects = new Layout(dt).layout(nodes, labels, links);
+			// An anonymous type has no layout of its own (the grammar has no place for
+			// one), and its super types' stored layouts overlap: lay it out afresh,
+			// as the old editor did.
+			Map<String, Layout.Rect> rects = dt instanceof AnonymousDiagramType
+					? new Layout(dt).elkLayout(nodes, labels, links)
+					: new Layout(dt).layout(nodes, labels, links);
 
 			List<DiagramNode> result = new ArrayList<>();
 			for (Node n : nodes) {
@@ -288,6 +298,7 @@ public final class DiagramBuilder {
 			boolean outConnectable = false;
 			boolean deletable = false;
 			String featureBase = null;
+			String openType = null;
 			List<DiagramPort> in = List.of();
 			List<DiagramPort> out = List.of();
 			if (n instanceof Block b) {
@@ -299,6 +310,7 @@ public final class DiagramBuilder {
 					DiagramType base = FeatureEdits.featureBase(declared);
 					featureBase = base != null ? base.name() : null;
 				}
+				openType = openType(b);
 				in = ports(b.getInPorts());
 				out = ports(b.getOutPorts());
 			} else if (n instanceof Parameter p) {
@@ -318,7 +330,7 @@ public final class DiagramBuilder {
 			return new DiagramNode(id, kind, labels.get(id), typeName,
 					n.isInherited(), n.isInlined(), error,
 					r.x(), r.y(), r.width(), r.height(), in, out, inConnectable, outConnectable, deletable,
-					featureBase);
+					featureBase, openType);
 		}
 
 		/** A literal is drawn left of its target, level with the target port (LiteralPart). */
@@ -340,7 +352,7 @@ public final class DiagramBuilder {
 			int x = r.x() - width - LITERAL_GAP;
 			return new DiagramNode("#literal:" + target, Diagram.LITERAL, text, lit.type().name(),
 					false, false, false, x, y, width, LITERAL_HEIGHT, List.of(), List.of(), false, false, false,
-					null);
+					null, null);
 		}
 
 		private static List<DiagramPort> ports(Iterable<Port> ports) {
@@ -512,6 +524,64 @@ public final class DiagramBuilder {
 			name = b.declaredInDiagramType().name() + ASTNode.DECLARED_IN_SEP + name;
 		}
 		return name;
+	}
+
+	/**
+	 * A diagram type to show: a top-level one, or an anonymous one by its name
+	 * (the compiler's {@code Main$pid}: the type of block {@code pid} declared in
+	 * {@code Main}; deeper ones add segments). Edits only find top-level types
+	 * ({@link #find}), so an anonymous type is read-only.
+	 */
+	private static DiagramType findShown(CompilationUnit cu, String name) {
+		DiagramType dt = find(cu, name);
+		if (dt != null || name == null || !name.contains(ANONYMOUS_SEP)) {
+			return dt;
+		}
+		String[] path = name.split(java.util.regex.Pattern.quote(ANONYMOUS_SEP));
+		DiagramType current = find(cu, path[0]);
+		for (int i = 1; current != null && i < path.length; i++) {
+			DiagramType next = null;
+			for (Block b : current.getLocalBlocks()) {
+				if (b.name().equals(path[i]) && b.hasAnonymousDiagramType()) {
+					next = b.anonymousDiagramType();
+				}
+			}
+			current = next;
+		}
+		return current;
+	}
+
+	/**
+	 * The diagram type a block's "Open" shows: its anonymous type ({@code b: B {...}}),
+	 * or its type if that is a diagram type declared in the same file; otherwise null.
+	 */
+	static String openType(Block b) {
+		TypeDecl t = b.type();
+		if (t instanceof AnonymousDiagramType a) {
+			return a.name();
+		}
+		return t instanceof DiagramType dt && dt.compUnit() == b.diagramType().compUnit() ? dt.name() : null;
+	}
+
+	/** Separates the segments of an anonymous type's name ({@code ASTNode.INLINE_SEP}). */
+	private static final String ANONYMOUS_SEP = "$";
+
+	/**
+	 * Why an anonymous type is read-only, for the banner after "Read-only: ",
+	 * e.g. "This is the type of block pid in Main, which is an anonymous type. It
+	 * is shown read-only (change the block's features with "Features…" in Main,
+	 * or edit the text)".
+	 */
+	static String anonymousReadOnly(AnonymousDiagramType a) {
+		String name = a.name();
+		int last = name.lastIndexOf(ANONYMOUS_SEP);
+		String block = name.substring(last + 1);
+		String in = name.substring(0, last);
+		TypeDecl base = a.getNumSuperType() > 0 ? a.getSuperType(0).type() : null;
+		boolean features = base instanceof DiagramType b && !b.featureDecls().isEmpty();
+		return "This is the type of block " + block + " in " + in + ", which is an anonymous type. It is shown read-only ("
+				+ (features ? "change the block's features with \"Features…\" in " + in + ", or edit the text)"
+						: "edit the text)");
 	}
 
 	private static DiagramType find(CompilationUnit cu, String name) {

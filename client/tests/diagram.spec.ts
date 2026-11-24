@@ -861,6 +861,28 @@ test('Back returns to the type or file shown before', async ({ page }) => {
   await expect(page.getByTestId('type-select')).toHaveValue('Acc');
 });
 
+test("a block's anonymous type (its features) can be opened, read-only", async ({ page }) => {
+  await goto(page, '/?file=PLib.dia&type=Main');
+  await node(page, 'pid').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Open Main$pid' }).click();
+  const typeSelect = page.getByTestId('type-select');
+  await expect(typeSelect).toHaveValue('Main$pid');
+  await expect(typeSelect.locator('option:checked')).toHaveText('Main$pid (anonymous)');
+  await expect(page.getByTestId('read-only')).toHaveText(
+    'Read-only: This is the type of block pid in Main, which is an anonymous type. It is shown read-only ' +
+      '(change the block\'s features with "Features…" in Main, or edit the text)',
+  );
+  // P's elements and those of its features Derivative (PD) and Integral (PI).
+  for (const id of ['P::PPart', 'PD::DPart', 'PI::IPart', 'P::Out']) await expect(node(page, id)).toBeVisible();
+  await node(page, 'PD::DPart').click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: 'Rename…' })).toBeDisabled();
+  await page.keyboard.press('Escape');
+  // Back to Main.
+  await page.getByTestId('back').click();
+  await expect(typeSelect).toHaveValue('Main');
+  await expect(node(page, 'pid')).toBeVisible();
+});
+
 test('lists of types are sorted by name', async ({ page }) => {
   await goto(page, '/?file=PLib.dia&type=PTrack');
   const sorted = (names: string[]) => [...names].sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }));

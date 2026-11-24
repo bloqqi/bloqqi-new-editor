@@ -138,6 +138,14 @@
   `addBlock` answer shows a new block with `featureBase`; "No" leaves a plain
   block, and the two are separate undo steps). The `recommendation` mechanism is
   deliberately not carried over.
+- Anonymous types: a block `b: B { ... }` in `T` has the type named `T$b`
+  (the compiler's `AnonymousDiagramType.name()`; deeper ones add segments).
+  Every block node has `openType`: that name, or its type if it is a diagram
+  type of the file (the menu's "Open …"). `DiagramBuilder.build` resolves such
+  names (`findShown`), lays them out afresh with ELK (super types' stored
+  layouts would overlap; the grammar has no place to store one) and marks them
+  read-only; edits use `find`/`resolve`, which only know top-level types, so
+  they never reach one. The type select shows it as "T$b (anonymous)".
 - Navigation (`useServer`): opening another file or type at the user's request
   (RequestKind `navigate`: the file and type selects, "Open <Type>") pushes an
   entry onto the browser's history; everything else replaces the current one.

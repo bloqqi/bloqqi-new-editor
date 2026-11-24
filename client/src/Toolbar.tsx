@@ -87,6 +87,10 @@ export function Toolbar({
           disabled={status !== 'open' || !diagram || diagram.diagramTypes.length === 0}
         >
           {(!diagram || !diagram.diagramType) && <option value="">–</option>}
+          {diagram?.diagramType && !diagram.diagramTypes.includes(diagram.diagramType) && (
+            // A block's anonymous type (Main$pid), shown read-only.
+            <option value={diagram.diagramType}>{diagram.diagramType} (anonymous)</option>
+          )}
           {sortedNames(diagram?.diagramTypes ?? []).map((t) => (
             <option key={t} value={t}>
               {t}

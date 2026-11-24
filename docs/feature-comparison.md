@@ -12,7 +12,7 @@ one in [README.md](../README.md) and [CLAUDE.md](../CLAUDE.md). State as of
 |---|---|---|
 | Diagram types with inheritance, interceptions, inlined blocks | ✅ | ✅ |
 | Choosing the shown type | Outline tree | Toolbar drop-down (sorted) |
-| Opening anonymous types (blocks with features) | ✅ via outline | ❌ |
+| Opening anonymous types (blocks with features) | ✅ via outline | ✅ "Open Main$pid" on the block; read-only, laid out afresh |
 | Open Declaration (block → its type) | ✅ (no way back) | ✅ with Back (toolbar ← and the browser's Back/Forward) |
 | Zoom, fit | ✅ zoom combo | ✅ zoom/fit buttons |
 | "Show types" on blocks and variables | ✅ preference | ➖ tooltip only |
@@ -72,5 +72,5 @@ one in [README.md](../README.md) and [CLAUDE.md](../CLAUDE.md). State as of
 
 ## Main gaps in the new editor
 
-Inline/collapse, opening anonymous types, and some smaller items: naming a
-block on drop, resizing nodes, and printing. (The `recommendation` mechanism is deliberately not carried over.)
+Inline/collapse, editing anonymous types (they are shown read-only), and some
+smaller items: naming a block on drop, resizing nodes, and printing. (The `recommendation` mechanism is deliberately not carried over.)

@@ -43,6 +43,11 @@ export interface DiagramNode {
   deletable: boolean;
   /** For a block whose type declares optional features: that type (see FeatureEdits), else null. */
   featureBase: string | null;
+  /**
+   * For a block: the diagram type "Open" shows (its anonymous type, named like
+   * `Main$pid`, or its type if declared in the file), else null.
+   */
+  openType: string | null;
 }
 
 /** A type a block can be added of (the palette; see DiagramBuilder.palette). */

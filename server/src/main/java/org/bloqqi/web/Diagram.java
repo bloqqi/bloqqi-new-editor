@@ -92,6 +92,9 @@ public record Diagram(
 	 * @param featureBase    for a block whose type declares optional features (directly, or
 	 *                       through its anonymous type {@code b: B { feature f; }}): that
 	 *                       type's name (see {@link FeatureEdits}); otherwise null
+	 * @param openType       for a block: the diagram type "Open" shows (its anonymous type,
+	 *                       named like {@code Main$pid}, or its type if declared in the file);
+	 *                       otherwise null
 	 */
 	public record DiagramNode(
 			String id,
@@ -110,7 +113,8 @@ public record Diagram(
 			boolean inConnectable,
 			boolean outConnectable,
 			boolean deletable,
-			String featureBase) {
+			String featureBase,
+			String openType) {
 	}
 
 	/**

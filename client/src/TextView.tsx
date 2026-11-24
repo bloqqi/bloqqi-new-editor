@@ -232,7 +232,8 @@ export const TextView = forwardRef<
   useEffect(() => {
     const v = view.current;
     if (!v || !diagramType) return;
-    const at = declarationOffset(v.state.doc.toString(), diagramType);
+    // (An anonymous type, Main$pid, is declared inside Main.)
+    const at = declarationOffset(v.state.doc.toString(), diagramType.split('$')[0]);
     if (at < 0) return;
     v.dispatch({
       selection: EditorSelection.cursor(at),

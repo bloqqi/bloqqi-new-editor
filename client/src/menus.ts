@@ -54,11 +54,12 @@ export function nodeMenu(node: DiagramFlowNode, c: MenuContext, at: Point): Menu
   ];
   if (node.type === 'block') {
     const typeName = node.data.typeName;
-    const local = c.diagram.diagramTypes.includes(typeName);
+    // Its anonymous type (b: B { ... }, shown read-only) or a diagram type of the file.
+    const target = node.data.openType;
     items.push({
-      label: `Open ${typeName}`,
-      disabledReason: local ? null : `${typeName} is not a diagram type in ${c.diagram.file}`,
-      onSelect: () => c.open(c.diagram.file, typeName),
+      label: `Open ${target ?? typeName}`,
+      disabledReason: target ? null : `${typeName} is not a diagram type in ${c.diagram.file}`,
+      onSelect: () => target && c.open(c.diagram.file, target),
     });
     if (node.data.featureBase) {
       items.push({ label: 'Features…', disabledReason: reason, onSelect: () => c.editFeatures(node.id, at) });

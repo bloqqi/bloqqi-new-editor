@@ -796,7 +796,9 @@ file.
    *Answered (for top-level types):* `annotation(...)` blocks, written as the
    old editor saved them: the first move stores the type's whole current
    layout, entries sorted by key, inherited elements under `Super::name` in the
-   subtype, literals not stored. Anonymous types are still open.
+   subtype, literals not stored. Anonymous types (`Main$pid`) are shown
+   read-only and laid out afresh with ELK each time, as the old editor did
+   when it first opened one; storing their layout is still open.
 4. **Scope of a session.** One file per session as today, or a project with
    several files and working `import`s? Several types open at once?
    *Partly answered:* the server serves a workspace folder of `.dia` files,
